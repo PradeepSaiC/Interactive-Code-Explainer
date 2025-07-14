@@ -289,11 +289,45 @@ export default function Home() {
       // 2. Get explanations for each block
       // Use explicit block numbering and a reference example in the prompt
       const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
+      const tripleBacktick = '```';
       let prompt;
-      if (selectedLanguage === 'c') {
-        prompt = `The following code blocks are written in C. For each block, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown, using triple backticks (\`\`\`) for code blocks and specifying the language (e.g., \`\`\`c). Separate explanation text and code clearly. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\nint foo() {\n    return 42;\n}\n\nBlock 2:\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.\n\n\`\`\`c\nint foo() {\n    return 42;\n}\`\`\`",\n  "This block is the main function. It prints the result of calling foo, which is 42, and then returns 0.\n\n\`\`\`c\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\`\`\`"\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+      if (selectedLanguage === 'java') {
+        prompt =
+          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- For Java, split each class into separate blocks for each method or constructor, not just the whole class. If there are top-level comments or fields, treat them as separate blocks as well.\\n" +
+          "- Format any code as a code block in Markdown with the correct language label.\\n" +
+          "- For inline code, use single backticks (like this).\\n" +
+          "- Never output language names (like 'java') on their own line.\\n" +
+          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
+          "- Do not include any formatting that would break Markdown rendering.\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
+          "Example input: Block 1: public class HelloWorld {\\n    public static void main(String[] args) {\\n        System.out.println(\\\"Hello, World!\\\");\\n    }\\n    private void greet() {\\n        System.out.println(\\\"Greetings!\\\");\\n    }\\n}\\n" +
+          "Example output: [\\\"This block defines the main method, which is the entry point of the program. It prints 'Hello, World!' to the console. Newline Newline Java code for main method.\\\", \\\"This block defines a private method called greet that prints 'Greetings!' to the console. Newline Newline Java code for greet method.\\\"]\\n\\n" +
+          "Now, here are the blocks: " + numberedBlocks;
+      } else if (selectedLanguage === 'c' || selectedLanguage === 'cpp') {
+        prompt =
+          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- If the explanation includes code, always wrap it in triple backticks (`) with the language tag (e.g., `" + selectedLanguage + "`) on the same line.\\n" +
+          "- For inline code, use single backticks ( like this ).\\n" +
+          "- Never output language names (like 'c++' or 'cpp') on their own line.\\n" +
+          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
+          "- Do not include any formatting that would break Markdown rendering.\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
+          "Example input:\\nBlock 1:\\nint foo() {\\n    return 42;\\n}\\n\\nBlock 2:\\nint main() {\\n    printf(\\\"%d\\\", foo());\\n    return 0;\\n}\\n\\n" +
+          "Example output:[\\\"This block defines a function called `foo` that returns the number 42.\\n\\n```" + selectedLanguage + "\\nint foo() {\\n    return 42;\\n}\\n```\\\",\\\"This block is the main function. It prints the result of calling `foo`, which is 42, and then returns 0.\\n\\n```" + selectedLanguage + "\\nint main() {\\n    printf(\\\"%d\\\", foo());\\n    return 0;\\n}\\n```\\\"]\\n\\n" +
+          "Now, here are the blocks:\\n" + numberedBlocks;
       } else {
-        prompt = `For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown, using triple backticks (\`\`\`) for code blocks and specifying the language (e.g., \`\`\`python). Separate explanation text and code clearly. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\ndef foo():\n    return 42\n\nBlock 2:\nprint(foo())\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.\n\n\`\`\`python\ndef foo():\n    return 42\`\`\`",\n  "This block prints the result of calling the foo function, which is 42.\n\n\`\`\`python\nprint(foo())\`\`\`"\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+        prompt =
+          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- If the explanation includes code, always wrap it in triple backticks (`) with the language tag (e.g., `" + selectedLanguage + "`) on the same line.\\n" +
+          "- For inline code, use single backticks ( like this ).\\n" +
+          "- Never output language names (like 'python' or 'java') on their own line.\\n" +
+          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
+          "- Do not include any formatting that would break Markdown rendering.\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
+          "Example input:\\nBlock 1:\\ndef foo():\\n    return 42\\n\\nBlock 2:\\nprint(foo())\\n\\n" +
+          "Example output:[\\\"This block defines a function called `foo` that returns the number 42.\\n\\n```" + selectedLanguage + "\\ndef foo():\\n    return 42\\n```\\\",\\\"This block prints the result of calling the `foo` function, which is 42.\\n\\n```" + selectedLanguage + "\\nprint(foo())\\n```\\\"]\\n\\n" +
+          "Now, here are the blocks:\\n" + numberedBlocks;
       }
       const body = {
         contents: [
@@ -355,44 +389,29 @@ export default function Home() {
       // Improved: robustly wrap code in Markdown code blocks
       function ensureMarkdownBlocks(str: string, lang: string) {
         // If triple backticks are present, assume it's already formatted
-        if (/```/.test(str)) return str;
+        if (/```/.test(str)) return str.replace(/\\n/g, '\n');
+        // Try to detect code lines (heuristic: indented or look like code)
         const lines = str.split('\n');
-        let result = [];
         let inCode = false;
-        let codeLang = lang;
+        let result = [];
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
-          // If the line is just a language name, treat the next lines as code
-          if (/^(python|c|cpp|java|javascript)$/i.test(line.trim())) {
-            if (inCode) {
-              result.push('```');
-              inCode = false;
-            }
-            codeLang = line.trim().toLowerCase();
-            // Only add the language label if the next line is code
-            if (lines[i + 1] && lines[i + 1].trim().length > 0) {
-              result.push('```' + codeLang);
-              inCode = true;
-            }
-            continue;
+          // Filter out lines that are just language names
+          if (/^(python|c|cpp|java|javascript|c\+\+)$/i.test(line.trim())) continue;
+          // Heuristic: line is code if indented or looks like code
+          const isCode = /^\s{2,}|^\t|^def |^class |^function |^#include|^public |^int |^print\(|^console\.log|^std::|^System\.|^\w+\(.*\)/.test(line);
+          if (isCode && !inCode) {
+            result.push('```' + lang);
+            inCode = true;
           }
-          // If the line looks like code (indented or typical code pattern)
-          if (/^\s{2,}|^\t|^def |^class |^function |^#include|^public |^int |^print\(|^console\.log|^std::|^System\./.test(line)) {
-            if (!inCode) {
-              result.push('```' + codeLang);
-              inCode = true;
-            }
-            result.push(line);
-          } else {
-            if (inCode) {
-              result.push('```');
-              inCode = false;
-            }
-            result.push(line);
+          if (!isCode && inCode) {
+            result.push('```');
+            inCode = false;
           }
+          result.push(line);
         }
         if (inCode) result.push('```');
-        return result.join('\n');
+        return result.join('\n').replace(/\\n/g, '\n');
       }
       const mapped = nonEmptyBlocks.map((b, i) => {
         let explanation = arr[i];
@@ -423,7 +442,7 @@ export default function Home() {
       {/* Header */}
       <header className="w-full px-6 py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
         <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-          Interactive Text Explainer
+          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer</code>
         </h1>
       </header>
       {/* Main content */}
@@ -480,12 +499,15 @@ export default function Home() {
           <>
             <div className="flex w-full items-center mb-2 md:mb-4 mt-[-1.5rem]">
               <button
-                className="text-xl mr-2 focus:outline-none text-gray-400 cursor-pointer"
+                className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-xl text-gray-500 dark:text-gray-300 mr-2"
                 aria-label="Back to Edit"
-                style={{ width: '4px' }}
                 onClick={() => { setBlockData([]); setError(null); }}
+                tabIndex={0}
               >
-                ←
+                <span className="sr-only">Back to Edit</span>
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14.5 4L8.5 11L14.5 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </button>
             </div>
             <div className="w-screen max-w-none h-[80vh] md:h-[80vh] flex flex-col md:flex-row gap-8 transition-all duration-300">
@@ -506,10 +528,13 @@ export default function Home() {
               {/* Visual separator for desktop */}
               <div className="hidden md:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" />
               <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full md:w-[30vw] mt-4 md:mt-0">
-                <ExplanationPanel
-                  aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
-                  aiLoading={aiLoading}
-                />
+                {/* Instead of passing className directly to ExplanationPanel, wrap it in a div with the desired classes */}
+                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full">
+                  <ExplanationPanel
+                    aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
+                    aiLoading={aiLoading}
+                  />
+                </div>
               </div>
             </div>
           </>
