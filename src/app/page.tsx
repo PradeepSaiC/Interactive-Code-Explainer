@@ -8,6 +8,14 @@ import { extractBlocks } from "../components/codeBlocks";
 
 // Remove the extractBlocksFromText and async effect at the top
 
+const DEFAULT_CODE_SAMPLES: Record<string, string> = {
+  python: `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`,
+  javascript: `// Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\nfunction helloWorld() {\n  // Print Hello, World! to the console\n  console.log('Hello, World!');\n}\n\nhelloWorld();`,
+  java: `// Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\npublic class HelloWorld {\n    public static void main(String[] args) {\n        // Print Hello, World! to the console\n        System.out.println(\"Hello, World!\");\n    }\n}`,
+  c: `// Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\n#include <stdio.h>\n\n// Print Hello, World! to the console\nint main() {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}`,
+  cpp: `// Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\n#include <iostream>\n\n// Print Hello, World! to the console\nint main() {\n    std::cout << \"Hello, World!\\n\";\n    return 0;\n}`
+};
+
 const LANGUAGE_OPTIONS = [
   { value: "python", label: "Python" },
   { value: "javascript", label: "JavaScript" },
@@ -18,7 +26,10 @@ const LANGUAGE_OPTIONS = [
 
 function detectLanguage(code: string): string {
   if (/^\s*def |^\s*class |import |print\(/m.test(code)) return "python";
+  if (/^\s*function |console\.log|let |const |var |=>|document\.|window\.|^\/\/|^\s*\/\*/m.test(code)) return "javascript";
   if (/^\s*#include|int main\s*\(|\bprintf\b|\bscanf\b|\breturn\b|\bvoid\b|\bchar\b|\bint\b|\bfloat\b|\bdouble\b/m.test(code)) return "c";
+  if (/^\s*public |System\.out|class |static void main|^\/\//m.test(code)) return "java";
+  if (/^#include <iostream>|std::cout|std::endl|using namespace std|^\/\//m.test(code)) return "cpp";
   return "plaintext";
 }
 
@@ -81,7 +92,7 @@ const splitBlocksWithGemini = async (code: string, language: string) => {
 // Helper: Robustly map Gemini blocks to original code lines and guarantee every line is assigned
 function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) {
   const codeLines = originalCode.split('\n');
-  let used = Array(codeLines.length).fill(false);
+  const used = Array(codeLines.length).fill(false);
   let lastIdx = 0;
   const mappedBlocks = [];
   const lineToBlockIndex = Array(codeLines.length).fill(-1);
@@ -114,24 +125,42 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       }
     }
     if (!found) {
-      // skip unmatched blocks for now
+      // If not found, try to assign each block line individually to unmatched lines in order
+      let start = -1;
+      let end = -1;
+      let blockLineIdx = 0;
+      for (let i = 0; i < codeLines.length && blockLineIdx < blockLines.length; i++) {
+        if (!used[i] && codeLines[i].trimEnd() === blockLines[blockLineIdx]) {
+          if (start === -1) start = i;
+          end = i;
+          used[i] = true;
+          lineToBlockIndex[i] = mappedBlocks.length;
+          blockLineIdx++;
+        }
+      }
+      if (start !== -1 && end !== -1) {
+        mappedBlocks.push({
+          text: codeLines.slice(start, end + 1).join('\n'),
+          start,
+          end,
+        });
+      }
     }
   }
-  // Add any unmatched lines as a final block
-  let miscLines = [];
+  // Add any remaining unmatched lines as their own blocks in order
   for (let i = 0; i < codeLines.length; i++) {
-    if (!used[i]) miscLines.push(i);
-  }
-  if (miscLines.length > 0) {
-    mappedBlocks.push({
-      text: miscLines.map(i => codeLines[i]).join('\n'),
-      start: miscLines[0],
-      end: miscLines[miscLines.length - 1],
-    });
-    for (const i of miscLines) {
+    if (!used[i]) {
+      mappedBlocks.push({
+        text: codeLines[i],
+        start: i,
+        end: i,
+      });
       lineToBlockIndex[i] = mappedBlocks.length - 1;
+      used[i] = true;
     }
   }
+  // Sort blocks by start index to preserve original order
+  mappedBlocks.sort((a, b) => a.start - b.start);
   return { mappedBlocks, lineToBlockIndex };
 }
 
@@ -142,7 +171,7 @@ export default function Home() {
       const stored = localStorage.getItem('codeInput');
       if (stored) return stored;
     }
-    return `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`;
+    return DEFAULT_CODE_SAMPLES['python'];
   });
   const [blockData, setBlockData] = useState<{ start: number; end: number; text: string; explanation: string }[]>([]);
   const [lineToBlockIndex, setLineToBlockIndex] = useState<number[] | undefined>(undefined);
@@ -230,14 +259,14 @@ export default function Home() {
     [blockData, blocks, currentBlock]
   );
 
+  // Theme index for Lydia Hallie-style color variants
+  const [themeIdx, setThemeIdx] = useState<number>(() => Math.floor(Math.random() * 20));
+
   // Handler to trigger AI explanation for all blocks
   // Only ever set text from user input or localStorage. Never overwrite text with Gemini output or processed code.
   const handleAIExplain = async () => {
-    const detected = detectLanguage(text);
-    if (detected !== selectedLanguage) {
-      setShowLangWarning(true);
-      return;
-    }
+    // Pick a new random theme for this session
+    setThemeIdx(Math.floor(Math.random() * 20));
     setShowLangWarning(false);
     setAILoading(true);
     setBlockData([]);
@@ -262,9 +291,9 @@ export default function Home() {
       const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
       let prompt;
       if (selectedLanguage === 'c') {
-        prompt = `The following code blocks are written in C. For each block, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\nint foo() {\n    return 42;\n}\n\nBlock 2:\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.",\n  "This block is the main function. It prints the result of calling foo, which is 42, and then returns 0."\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+        prompt = `The following code blocks are written in C. For each block, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown, using triple backticks (\`\`\`) for code blocks and specifying the language (e.g., \`\`\`c). Separate explanation text and code clearly. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\nint foo() {\n    return 42;\n}\n\nBlock 2:\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.\n\n\`\`\`c\nint foo() {\n    return 42;\n}\`\`\`",\n  "This block is the main function. It prints the result of calling foo, which is 42, and then returns 0.\n\n\`\`\`c\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\`\`\`"\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
       } else {
-        prompt = `For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\ndef foo():\n    return 42\n\nBlock 2:\nprint(foo())\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.",\n  "This block prints the result of calling the foo function, which is 42."\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+        prompt = `For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown, using triple backticks (\`\`\`) for code blocks and specifying the language (e.g., \`\`\`python). Separate explanation text and code clearly. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\ndef foo():\n    return 42\n\nBlock 2:\nprint(foo())\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.\n\n\`\`\`python\ndef foo():\n    return 42\`\`\`",\n  "This block prints the result of calling the foo function, which is 42.\n\n\`\`\`python\nprint(foo())\`\`\`"\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
       }
       const body = {
         contents: [
@@ -291,41 +320,93 @@ export default function Home() {
       }
       let arr: any[] = [];
       let cleanedText = rawText.trim();
-      if (cleanedText.startsWith('```json')) {
-        cleanedText = cleanedText.replace(/^```json/, '').replace(/```$/, '').trim();
-      } else if (cleanedText.startsWith('```')) {
-        cleanedText = cleanedText.replace(/^```/, '').replace(/```$/, '').trim();
+      // Remove code block markers if present
+      cleanedText = cleanedText.replace(/```json|```/g, '').trim();
+      // Try to parse the first valid JSON array
+      const firstBracket = cleanedText.indexOf('[');
+      const lastBracket = cleanedText.lastIndexOf(']');
+      let parseError = false;
+      if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+        const arrayString = cleanedText.substring(firstBracket, lastBracket + 1);
+        try {
+          arr = JSON.parse(arrayString);
+        } catch (e) {
+          // Fallback: try to split manually if not valid JSON
+          console.warn('[Gemini] Fallback: manual split of array string');
+          arr = arrayString
+            .slice(1, -1) // remove [ and ]
+            .split(/"\s*,\s*"/)
+            .map((s: string) => s.replace(/^"/, '').replace(/"$/, '').replace(/\\n/g, '\n'));
+          // If still not an array, set parseError
+          if (!Array.isArray(arr) || arr.length === 0) parseError = true;
+        }
+      } else {
+        parseError = true;
       }
-      try {
-        arr = JSON.parse(cleanedText);
-      } catch {
-        setError("Gemini explanation response (not JSON):\n" + rawText);
+      console.log('[Gemini] nonEmptyBlocks.length:', nonEmptyBlocks.length, 'arr.length:', Array.isArray(arr) ? arr.length : 'not array');
+      if (parseError || !Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
+        setError("Gemini explanation response (not JSON or block count mismatch):\n" + rawText);
         setBlockData([]);
         setAILoading(false);
-        // Remove code from localStorage if error
-        localStorage.removeItem('codeInput');
-        return;
-      }
-      // If Gemini returns a single string instead of an array, treat as error
-      if (!Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
-        setError("Gemini did not return block-level explanations. Please try again.\nGemini response:\n" + rawText);
-        setBlockData([]);
-        setAILoading(false);
-        // Remove code from localStorage if error
         localStorage.removeItem('codeInput');
         return;
       }
       // Map explanations to blocks by array index
+      // Improved: robustly wrap code in Markdown code blocks
+      function ensureMarkdownBlocks(str: string, lang: string) {
+        // If triple backticks are present, assume it's already formatted
+        if (/```/.test(str)) return str;
+        const lines = str.split('\n');
+        let result = [];
+        let inCode = false;
+        let codeLang = lang;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          // If the line is just a language name, treat the next lines as code
+          if (/^(python|c|cpp|java|javascript)$/i.test(line.trim())) {
+            if (inCode) {
+              result.push('```');
+              inCode = false;
+            }
+            codeLang = line.trim().toLowerCase();
+            // Only add the language label if the next line is code
+            if (lines[i + 1] && lines[i + 1].trim().length > 0) {
+              result.push('```' + codeLang);
+              inCode = true;
+            }
+            continue;
+          }
+          // If the line looks like code (indented or typical code pattern)
+          if (/^\s{2,}|^\t|^def |^class |^function |^#include|^public |^int |^print\(|^console\.log|^std::|^System\./.test(line)) {
+            if (!inCode) {
+              result.push('```' + codeLang);
+              inCode = true;
+            }
+            result.push(line);
+          } else {
+            if (inCode) {
+              result.push('```');
+              inCode = false;
+            }
+            result.push(line);
+          }
+        }
+        if (inCode) result.push('```');
+        return result.join('\n');
+      }
       const mapped = nonEmptyBlocks.map((b, i) => {
         let explanation = arr[i];
         if (explanation && typeof explanation === 'object') {
           explanation = explanation.explanation || Object.values(explanation)[0] || JSON.stringify(explanation);
         }
+        // Post-process: ensure code blocks are formatted for ReactMarkdown
+        let lang = selectedLanguage === 'cpp' ? 'cpp' : selectedLanguage;
+        explanation = typeof explanation === 'string' ? ensureMarkdownBlocks(explanation, lang) : JSON.stringify(explanation);
         return {
           start: b.start,
           end: b.end,
           text: b.text,
-          explanation: typeof explanation === 'string' ? explanation : JSON.stringify(explanation)
+          explanation
         };
       });
       setBlockData(mapped);
@@ -347,23 +428,41 @@ export default function Home() {
       </header>
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center w-full px-2 py-6">
+        {/* Error display */}
+        {error && (
+          <div className="mb-4 p-3 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 font-semibold text-sm max-w-2xl w-full text-center">
+            {error}
+          </div>
+        )}
         {/* Restore original conditional rendering for main content:
             Only show the visualizer/explanation panels if blockData (with explanations) is available and valid for navigation/highlighting.
             Otherwise, always show the code input page. */}
-        {!(blockData.length > 0 && validHighlightRange) ? (
+        {!(blockData.length > 0 && validHighlightRange && !error) ? (
           <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
             <div className="flex items-center justify-between text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
               <span>Code Input</span>
               <select
                 className="ml-4 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-base"
                 value={selectedLanguage}
-                onChange={e => setSelectedLanguage(e.target.value)}
+                onChange={e => {
+                  const newLang = e.target.value;
+                  // Only replace code if it matches the default for the previous language
+                  if (text === DEFAULT_CODE_SAMPLES[selectedLanguage]) {
+                    setText(DEFAULT_CODE_SAMPLES[newLang] || '');
+                  }
+                  setSelectedLanguage(newLang);
+                }}
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
             </div>
+            {showLangWarning && (
+              <div className="mb-2 p-3 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 font-semibold text-sm">
+                The code you entered appears to be in a different language than the selected option. Please select the correct language or update your code.
+              </div>
+            )}
             <CodePanel
               code={text}
               setCode={setText}
@@ -401,6 +500,7 @@ export default function Home() {
                   totalBlocks={validBlocks.length}
                   language={selectedLanguage}
                   lineToBlockIndex={lineToBlockIndex}
+                  themeIdx={themeIdx}
                 />
               </div>
               {/* Visual separator for desktop */}

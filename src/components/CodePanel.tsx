@@ -39,6 +39,7 @@ interface CustomCodeVisualizerProps {
   totalBlocks: number;
   language: string;
   lineToBlockIndex?: number[];
+  themeIdx?: number;
 }
 
 const getLanguageExtension = (code: string): Extension => {
@@ -65,48 +66,50 @@ function getHighlightDecorations(code: string, highlightRange?: [number, number]
   });
 }
 
-// Lydia Hallie-inspired color/gradient palette
-const BLOCK_COLORS = [
-  'linear-gradient(90deg, #f9d423 0%, #ff4e50 100%)',
-  'linear-gradient(90deg, #a1c4fd 0%, #c2e9fb 100%)',
-  'linear-gradient(90deg, #fbc2eb 0%, #a6c1ee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #f857a6 0%, #ff5858 100%)',
-  'linear-gradient(90deg, #43cea2 0%, #185a9d 100%)',
-  'linear-gradient(90deg, #30cfd0 0%, #330867 100%)',
-  'linear-gradient(90deg, #5ee7df 0%, #b490ca 100%)',
-  'linear-gradient(90deg, #f6d365 0%, #fda085 100%)',
-  'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(90deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(90deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #c471f5 0%, #fa71cd 100%)',
-  'linear-gradient(90deg, #48c6ef 0%, #6f86d6 100%)',
-  'linear-gradient(90deg, #9795f0 0%, #fbc7d4 100%)',
-  'linear-gradient(90deg, #fbc2eb 0%, #a6c1ee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #f857a6 0%, #ff5858 100%)',
-  'linear-gradient(90deg, #43cea2 0%, #185a9d 100%)',
-  'linear-gradient(90deg, #30cfd0 0%, #330867 100%)',
-  'linear-gradient(90deg, #5ee7df 0%, #b490ca 100%)',
-  'linear-gradient(90deg, #f6d365 0%, #fda085 100%)',
-  'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(90deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(90deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)',
+// Lydia Hallie-inspired THEMES array: each theme is a gradient+text color pair, all high-contrast
+const THEMES = [
+  // Light gradients for dark text
+  { gradient: 'linear-gradient(90deg, #f9f9f9 0%, #ffe29f 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #e0eafc 0%, #cfdef3 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #fbc2eb 0%, #a6c1ee 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #f6d365 0%, #fda085 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #fceabb 0%, #f8b500 100%)', textColor: '#222' },
+  // Dark gradients for white text
+  { gradient: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #232526 0%, #414345 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #141e30 0%, #243b55 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #0f2027 0%, #2c5364 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #1a2980 0%, #26d0ce 100%)', textColor: '#fff' },
+  // More Lydia Hallie-style variants
+  { gradient: 'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #f857a6 0%, #ff5858 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #43cea2 0%, #185a9d 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #30cfd0 0%, #330867 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #5ee7df 0%, #b490ca 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)', textColor: '#fff' },
+  { gradient: 'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #fa709a 0%, #fee140 100%)', textColor: '#222' },
+  { gradient: 'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)', textColor: '#fff' },
 ];
 
 // Helper to pick a random color for each block, never the same twice in a row
 function getBlockColor(idx: number, prevIdx: number | null) {
-  let colorIdx = Math.floor(Math.random() * BLOCK_COLORS.length);
+  let colorIdx = Math.floor(Math.random() * THEMES.length);
   // Avoid same color as previous
   if (prevIdx !== null && colorIdx === prevIdx) {
-    colorIdx = (colorIdx + 1) % BLOCK_COLORS.length;
+    colorIdx = (colorIdx + 1) % THEMES.length;
   }
-  return { color: BLOCK_COLORS[colorIdx], colorIdx };
+  return { color: THEMES[colorIdx].gradient, colorIdx };
+}
+
+// Add a helper to escape HTML
+function escapeHtml(str: string) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
@@ -118,6 +121,7 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   totalBlocks,
   language,
   lineToBlockIndex,
+  themeIdx,
 }) => {
   const [lines, setLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +133,7 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   useEffect(() => {
     // Always preserve original lines and whitespace
     setLines(code.split("\n"));
-    setHighlightedLines(code.split("\n"));
+    setHighlightedLines(code.split("\n").map(escapeHtml));
     setLoading(false);
   }, [code]);
 
@@ -156,9 +160,12 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
 
   // (Removed start/end/adjustedStart/adjustedEnd logic; handled by lineToBlockIndex and per-line rendering)
 
-  // Lydia Hallie-inspired: use a gradient for the active block
-  const colorIdx = currentBlock % BLOCK_COLORS.length;
-  const blockGradient = BLOCK_COLORS[colorIdx];
+  // Pick a theme index for the session (random on each explanation generation)
+  // Use themeIdx from props if provided, else pick random
+  let themeIndex = typeof themeIdx === 'number' ? themeIdx : Math.floor(Math.random() * THEMES.length);
+  if (isNaN(themeIndex) || themeIndex < 0 || themeIndex >= THEMES.length) themeIndex = 0;
+  const blockGradient = THEMES[themeIndex].gradient;
+  const blockTextColor = THEMES[themeIndex].textColor;
   const blockHighlightClass = "block-highlight-animated border-l-4 border-blue-400";
 
   return (
@@ -173,32 +180,51 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
                   const block = blockData[currentBlock];
                   return block && idx >= block.start && idx <= block.end;
                 })();
+            const wrapStyles: React.CSSProperties = {
+              wordBreak: 'break-all',
+              whiteSpace: 'pre-wrap',
+            };
             if (isCurrentBlock) {
               return (
                 <div
                   key={`block-line-${idx}`}
-                  className={blockHighlightClass + " px-3 py-1 rounded-md relative z-10 shadow-lg"}
+                  className={
+                    blockHighlightClass +
+                    " px-3 py-1 rounded-md relative z-10 shadow-lg animate-block-highlight block-zoom"
+                  }
                   style={{
-                    fontWeight: 600,
-                    fontSize: "1.08em",
+                    fontWeight: 700,
+                    fontSize: "1.13em",
                     marginBottom: "2px",
                     background: blockGradient,
+                    color: blockTextColor,
                     borderLeftColor: "#38bdf8",
-                    boxShadow: "0 4px 24px 0 rgba(56,189,248,0.10)",
-                    transition: "background 0.4s, box-shadow 0.4s"
+                    boxShadow: "0 4px 24px 0 rgba(56,189,248,0.18)",
+                    transition:
+                      "background 0.4s, color 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(0.4,0.2,0.2,1)",
+                    transform: "scale(1.04)",
+                    ...wrapStyles,
                   }}
                 >
-                  <span dangerouslySetInnerHTML={{ __html: line }} />
+                  <span style={wrapStyles} dangerouslySetInnerHTML={{ __html: line }} />
                 </div>
               );
             } else {
               return (
                 <div
                   key={`static-line-${idx}`}
-                  className="text-gray-700 dark:text-gray-300 px-2 py-0.5"
-                  style={{ fontWeight: 400, fontSize: "1em", marginBottom: "2px" }}
+                  className="text-gray-700 dark:text-gray-300 px-2 py-0.5 code-line-blur"
+                  style={{
+                    fontWeight: 400,
+                    fontSize: "1em",
+                    marginBottom: "2px",
+                    filter: "blur(1.5px)",
+                    opacity: 0.45,
+                    transition: "filter 0.4s, opacity 0.4s",
+                    ...wrapStyles,
+                  }}
                 >
-                  <span dangerouslySetInnerHTML={{ __html: line }} />
+                  <span style={wrapStyles} dangerouslySetInnerHTML={{ __html: line }} />
                 </div>
               );
             }
@@ -208,14 +234,14 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
       {/* Navigation controls */}
       <div className="mt-4 flex items-center justify-center gap-4">
         <button
-          className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 font-bold shadow"
+          className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 font-bold shadow cursor-pointer"
           onClick={onPrevBlock}
           disabled={currentBlock === 0}
         >
           Prev
         </button>
         <button
-          className="px-3 py-1 rounded bg-gradient-to-r from-pink-400 to-yellow-300 text-white font-bold shadow-lg border-2 border-yellow-400 dark:border-blue-400 hover:scale-105 transition-transform"
+          className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-green-400 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white disabled:opacity-50 font-bold shadow transition-colors duration-200 cursor-pointer"
           onClick={onNextBlock}
           disabled={currentBlock === totalBlocks - 1}
         >
