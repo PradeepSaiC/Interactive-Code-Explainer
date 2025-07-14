@@ -4,24 +4,16 @@ import React, { useState, useCallback } from "react";
 import CodePanel from "../components/CodePanel";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
+import { extractBlocks } from "../components/codeBlocks";
 
-// Generic block extraction: split by double newlines (paragraphs)
-function extractBlocksFromText(text: string) {
-  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
-  let idx = 0;
-  return paragraphs.map((para) => {
-    const lines = para.split(/\r?\n/);
-    const start = idx;
-    const end = idx + lines.length - 1;
-    idx = end + 1;
-    return { code: lines, start, end };
-  });
-}
+// Remove the extractBlocksFromText and async effect at the top
 
 const LANGUAGE_OPTIONS = [
   { value: "python", label: "Python" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "java", label: "Java" },
   { value: "c", label: "C" },
-  { value: "plaintext", label: "Plain Text" },
+  { value: "cpp", label: "C++" },
 ];
 
 function detectLanguage(code: string): string {
@@ -40,12 +32,84 @@ export default function Home() {
   const [selectedLanguage, setSelectedLanguage] = useState("python");
   const [showLangWarning, setShowLangWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [extractedBlocks, setExtractedBlocks] = useState<{ start: number; end: number; text: string; explanation?: string }[]>([]);
+  const [blockApiLoading, setBlockApiLoading] = useState(false);
 
-  // Always recompute blocks on render (for initial editing, before Gemini)
-  const blocks = extractBlocksFromText(text);
+  // Helper: fallback paragraph splitter
+  function extractBlocksFromText(text: string) {
+    const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+    let idx = 0;
+    return paragraphs.map((para) => {
+      const lines = para.split(/\r?\n/);
+      const start = idx;
+      const end = idx + lines.length - 1;
+      idx = end + 1;
+      return { text: para, start, end };
+    });
+  }
 
-  // Filter blockData to only valid blocks
+  // Replace the block extraction effect with an API call
+  React.useEffect(() => {
+    let cancelled = false;
+    async function fetchBlocks() {
+      setBlockApiLoading(true);
+      try {
+        const res = await fetch('/api/extract-blocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: text, language: selectedLanguage })
+        });
+        if (!res.ok) throw new Error('Block extraction API error: ' + res.status);
+        const blocks = await res.json();
+        if (!cancelled && Array.isArray(blocks) && blocks.length > 0) {
+          setExtractedBlocks(blocks.map(b => ({ ...b, text: b.code })));
+        } else if (!cancelled) {
+          setExtractedBlocks([{ text, start: 0, end: text.split('\n').length - 1 }]);
+        }
+      } catch {
+        if (!cancelled) setExtractedBlocks([{ text, start: 0, end: text.split('\n').length - 1 }]);
+      }
+      setBlockApiLoading(false);
+    }
+    fetchBlocks();
+    return () => { cancelled = true; };
+  }, [text, selectedLanguage]);
+
+  // 1. Reset blockData and currentBlock when code or language changes
+  React.useEffect(() => {
+    setCurrentBlock(0);
+    setBlockData([]);
+    setError(null);
+  }, [text, selectedLanguage]);
+
+  // 2. Always use the latest extractedBlocks for block navigation/highlighting before Gemini
+  const blocks = extractedBlocks;
+
+  // 3. After Gemini, blockData is mapped from the latest extractedBlocks (with explanations)
+  // 4. Navigation buttons and highlighting use blockData if available, else fallback to blocks
+  const arr = blockData.length > 0 ? blockData : blocks;
+  const totalBlocks = arr.length;
+  const hasBlocks = totalBlocks > 0 && text.trim().length > 0;
   const codeLineCount = text.split('\n').length;
+  let highlightRange: [number, number] = arr[currentBlock]
+    ? [arr[currentBlock].start, arr[currentBlock].end]
+    : [0, 0];
+  highlightRange = [
+    Math.max(0, Math.min(highlightRange[0], codeLineCount - 1)),
+    Math.max(0, Math.min(highlightRange[1], codeLineCount - 1)),
+  ];
+  const validHighlightRange =
+    hasBlocks &&
+    highlightRange[0] >= 0 &&
+    highlightRange[1] < codeLineCount &&
+    highlightRange[0] <= highlightRange[1];
+
+  // 5. Navigation handlers always clamp to valid range
+  const handlePrevBlock = () => setCurrentBlock((b) => Math.max(0, Math.min(totalBlocks - 1, b - 1)));
+  const handleNextBlock = () => setCurrentBlock((b) => Math.max(0, Math.min(totalBlocks - 1, b + 1)));
+
+  // 6. Pass correct props to CustomCodeVisualizer
+  // Filter blockData to only valid blocks
   const validBlocks = blockData.filter(
     (b) =>
       typeof b.start === 'number' &&
@@ -64,29 +128,6 @@ export default function Home() {
       setCurrentBlock(0);
     }
   }, [validBlocks.length, blocks.length]);
-  // For highlighting: get start/end lines for current block
-  const arr = validBlocks.length > 0 ? validBlocks : blocks;
-  let highlightRange: [number, number] = arr[currentBlock]
-    ? [arr[currentBlock].start, arr[currentBlock].end]
-    : [0, 0];
-  // Clamp highlightRange to valid code lines
-  highlightRange = [
-    Math.max(0, Math.min(highlightRange[0], codeLineCount - 1)),
-    Math.max(0, Math.min(highlightRange[1], codeLineCount - 1)),
-  ];
-  const hasBlocks = validBlocks.length > 0 && text.trim().length > 0;
-  const validHighlightRange =
-    hasBlocks &&
-    highlightRange[0] >= 0 &&
-    highlightRange[1] < codeLineCount &&
-    highlightRange[0] <= highlightRange[1];
-
-  // Reset currentBlock on code change
-  React.useEffect(() => {
-    setCurrentBlock(0);
-    setBlockData([]);
-    setError(null);
-  }, [text]);
 
   // Set current block based on a line number (from CodePanel)
   const setCurrentBlockForLine = useCallback(
@@ -110,26 +151,13 @@ export default function Home() {
     setBlockData([]);
     setCurrentBlock(0);
     setError(null);
+    // Use extractedBlocks for block splitting
+    const blocksToExplain = extractedBlocks.length > 0 ? extractedBlocks : [{ text, start: 0, end: text.split('\n').length - 1 }];
+    // Prepare prompt: full code and blocks, ask for explanations only
+    const prompt = `Here is some code:\n\n${text}\n\nThe code has been split into blocks. For each block, provide a beginner-friendly explanation.\nReturn a JSON array of explanations, one for each block, in order.\nDo NOT mention block numbers, indices, or repeat the code. Only return the explanations as a JSON array, no extra text.\n\nBlocks:\n${blocksToExplain.map((b, i) => b.text).join('\n---\n')}`;
     const GEMINI_API_KEY = "AIzaSyCLLTHV9_W_whqPZ0kVOk6qTEhm_ZM7Lls";
     const GEMINI_API_URL =
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-    // Add a sample program and expected output as reference
-    const sampleCode = `def add(a, b):\n    return a + b\n\nresult = add(2, 3)\nprint(result)`;
-    const sampleBlocks = [
-      {
-        start: 0,
-        end: 1,
-        text: "def add(a, b):\n    return a + b",
-        explanation: "This block defines a function `add` that takes two arguments and returns their sum. Example usage:\n\n```python\nresult = add(2, 3)\nprint(result)\n```"
-      },
-      {
-        start: 2,
-        end: 3,
-        text: "result = add(2, 3)\nprint(result)",
-        explanation: "This block calls the `add` function and prints the result."
-      }
-    ];
-    const prompt = `Split the following code into logical blocks (functions, classes, or paragraphs). For each block, return a JSON object with: start (start line, 0-based, must match the input code), end (end line, 0-based, must match the input code), text (the code for the block), and explanation (a beginner-friendly explanation).\n\n- The start and end line numbers must correspond to the input code, with the first line as 0.\n- Do not skip any lines.\n- Return a JSON array ONLY, no extra text.\n\nHere is a sample program and the expected output format:\n\nSample code:\n${sampleCode}\n\nSample output:\n${JSON.stringify(sampleBlocks, null, 2)}\n\nNow do the same for this code:\n${text}`;
     const body = {
       contents: [
         {
@@ -150,9 +178,6 @@ export default function Home() {
       });
       if (!res.ok) throw new Error("Gemini API error: " + res.status);
       const data = await res.json();
-      // Log the full Gemini response for debugging
-      console.log('Gemini full response:', data);
-      // For debugging: show the raw text response in the UI
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       setError(null);
       if (!rawText) {
@@ -161,10 +186,8 @@ export default function Home() {
         setAILoading(false);
         return;
       }
-      // Try to parse as JSON, but if it fails, just show the raw text for now
       let arr: any[] = [];
       let cleanedText = rawText.trim();
-      // Remove triple backticks and json code block if present
       if (cleanedText.startsWith('```json')) {
         cleanedText = cleanedText.replace(/^```json/, '').replace(/```$/, '').trim();
       } else if (cleanedText.startsWith('```')) {
@@ -179,17 +202,19 @@ export default function Home() {
         return;
       }
       if (!Array.isArray(arr) || arr.length === 0) {
-        setError("No blocks or explanations returned. Try again or simplify your input.\nGemini response:\n" + rawText);
+        setError("No explanations returned. Try again or simplify your input.\nGemini response:\n" + rawText);
         setBlockData([]);
         setAILoading(false);
         return;
       }
-      setBlockData(arr.map((b) => ({
-        start: b.start ?? 0,
-        end: b.end ?? 0,
-        text: b.text ?? "",
-        explanation: b.explanation ?? "No explanation."
-      })));
+      // Map explanations to blocks
+      const mapped = blocksToExplain.map((b, i) => ({
+        start: b.start,
+        end: b.end,
+        text: b.text,
+        explanation: typeof arr[i] === 'string' ? arr[i] : JSON.stringify(arr[i])
+      }));
+      setBlockData(mapped);
     } catch (e: any) {
       setError(e.message || "Unknown error while contacting Gemini API.");
       setBlockData([]);
@@ -207,8 +232,10 @@ export default function Home() {
       </header>
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center w-full px-2 py-6">
-        {/* Only show code input at the start */}
-        {!(hasBlocks && validHighlightRange) ? (
+        {/* Restore original conditional rendering for main content:
+            Only show the visualizer/explanation panels if blockData (with explanations) is available and valid for navigation/highlighting.
+            Otherwise, always show the code input page. */}
+        {!(blockData.length > 0 && validHighlightRange) ? (
           <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
             <div className="flex items-center justify-between text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
               <span>Code Input</span>
@@ -249,12 +276,13 @@ export default function Home() {
             </div>
             <div className="w-screen max-w-none h-[80vh] md:h-[80vh] flex flex-col md:flex-row gap-8 transition-all duration-300">
               <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full md:w-[70vw]">
+                {/* When passing blockData={arr} to CustomCodeVisualizer, ensure every block has explanation: string */}
                 <CustomCodeVisualizer
                   code={text}
                   blockData={validBlocks}
                   currentBlock={currentBlock}
-                  onPrevBlock={() => setCurrentBlock((b) => Math.max(0, Math.min(validBlocks.length - 1, b - 1)))}
-                  onNextBlock={() => setCurrentBlock((b) => Math.max(0, Math.min(validBlocks.length - 1, b + 1)))}
+                  onPrevBlock={handlePrevBlock}
+                  onNextBlock={handleNextBlock}
                   totalBlocks={validBlocks.length}
                   language={selectedLanguage}
                 />
@@ -263,7 +291,7 @@ export default function Home() {
               <div className="hidden md:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" />
               <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full md:w-[30vw] mt-4 md:mt-0">
                 <ExplanationPanel
-                  aiExplanation={blockData[currentBlock]?.explanation || ""}
+                  aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
                   aiLoading={aiLoading}
                 />
               </div>
