@@ -7,7 +7,7 @@ import { EditorView, Decoration, ViewUpdate } from "@codemirror/view";
 import { Extension, RangeSetBuilder } from "@codemirror/state";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+// (No Framer Motion: use only CSS transitions for block highlighting)
 import * as shiki from "shiki";
 
 // Add this to your globals.css:
@@ -38,6 +38,7 @@ interface CustomCodeVisualizerProps {
   onNextBlock: () => void;
   totalBlocks: number;
   language: string;
+  lineToBlockIndex?: number[];
 }
 
 const getLanguageExtension = (code: string): Extension => {
@@ -96,38 +97,6 @@ const BLOCK_COLORS = [
   'linear-gradient(90deg, #43e97b 0%, #38f9d7 100%)',
   'linear-gradient(90deg, #fa709a 0%, #fee140 100%)',
   'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #c471f5 0%, #fa71cd 100%)',
-  'linear-gradient(90deg, #48c6ef 0%, #6f86d6 100%)',
-  'linear-gradient(90deg, #9795f0 0%, #fbc7d4 100%)',
-  'linear-gradient(90deg, #fbc2eb 0%, #a6c1ee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #f857a6 0%, #ff5858 100%)',
-  'linear-gradient(90deg, #43cea2 0%, #185a9d 100%)',
-  'linear-gradient(90deg, #30cfd0 0%, #330867 100%)',
-  'linear-gradient(90deg, #5ee7df 0%, #b490ca 100%)',
-  'linear-gradient(90deg, #f6d365 0%, #fda085 100%)',
-  'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(90deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(90deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #c471f5 0%, #fa71cd 100%)',
-  'linear-gradient(90deg, #48c6ef 0%, #6f86d6 100%)',
-  'linear-gradient(90deg, #9795f0 0%, #fbc7d4 100%)',
-  'linear-gradient(90deg, #fbc2eb 0%, #a6c1ee 100%)',
-  'linear-gradient(90deg, #f7971e 0%, #ffd200 100%)',
-  'linear-gradient(90deg, #f857a6 0%, #ff5858 100%)',
-  'linear-gradient(90deg, #43cea2 0%, #185a9d 100%)',
-  'linear-gradient(90deg, #30cfd0 0%, #330867 100%)',
-  'linear-gradient(90deg, #5ee7df 0%, #b490ca 100%)',
-  'linear-gradient(90deg, #f6d365 0%, #fda085 100%)',
-  'linear-gradient(90deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(90deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(90deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(90deg, #7f53ac 0%, #647dee 100%)',
 ];
 
 // Helper to pick a random color for each block, never the same twice in a row
@@ -148,6 +117,7 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   onNextBlock,
   totalBlocks,
   language,
+  lineToBlockIndex,
 }) => {
   const [lines, setLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,107 +127,85 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   const LONG_LINE_THRESHOLD = 80;
 
   useEffect(() => {
+    // Always preserve original lines and whitespace
     setLines(code.split("\n"));
-    setLoading(true);
-    shiki
-      .codeToHtml(code, { lang: language, theme: "github-dark" })
-      .then((html) => {
-        // Extract lines from the generated HTML
-        const matches = html.match(/<span class="line">([\s\S]*?)<\/span>/g);
-        if (matches) {
-          setHighlightedLines(matches.map((line) => line.replace(/<span class="line">|<\/span>/g, "")));
-        } else {
-          setHighlightedLines(lines);
-        }
-        setLoading(false);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, language]);
+    setHighlightedLines(code.split("\n"));
+    setLoading(false);
+  }, [code]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-lg animate-pulse text-blue-500">Loading code visualization...</div>
     );
   }
-  // Get block range
-  const block = blockData[currentBlock];
-  const start = block?.start ?? 0;
-  const end = block?.end ?? 0;
-
-  // Helper: is this block a long line?
-  const isLongBlock = () => {
-    for (let i = start; i <= end; ++i) {
-      if ((lines[i] || "").length > LONG_LINE_THRESHOLD) return true;
+  // Use lineToBlockIndex if provided, else fallback to blockData's start/end
+  let blockLineSet: Set<number>;
+  if (lineToBlockIndex) {
+    blockLineSet = new Set(lineToBlockIndex.map((bIdx, i) => bIdx === currentBlock ? i : null).filter(i => i !== null));
+  } else {
+    let start = 0;
+    let end = 0;
+    const block = blockData[currentBlock];
+    if (block) {
+      start = block.start ?? 0;
+      end = block.end ?? 0;
     }
-    return false;
-  };
-  // If any line in the block is too long, treat it as a single block
-  let adjustedStart = start;
-  let adjustedEnd = end;
-  for (let i = start; i <= end; ++i) {
-    if ((lines[i] || "").length > LONG_LINE_THRESHOLD) {
-      adjustedStart = i;
-      adjustedEnd = i;
-      break;
-    }
+    blockLineSet = new Set();
+    for (let i = start; i <= end; ++i) blockLineSet.add(i);
   }
-  const longBlock = adjustedStart === adjustedEnd && (lines[adjustedStart] || "").length > LONG_LINE_THRESHOLD;
 
-  // Assign a color per block index (deterministic, not random)
+  // (Removed start/end/adjustedStart/adjustedEnd logic; handled by lineToBlockIndex and per-line rendering)
+
+  // Lydia Hallie-inspired: use a gradient for the active block
   const colorIdx = currentBlock % BLOCK_COLORS.length;
-  const blockColor = BLOCK_COLORS[colorIdx];
+  const blockGradient = BLOCK_COLORS[colorIdx];
+  const blockHighlightClass = "block-highlight-animated border-l-4 border-blue-400";
 
   return (
     <div className="relative h-full w-full flex flex-col p-0 m-0">
       <div className="flex-1 overflow-auto bg-gradient-to-br from-blue-50/80 to-purple-100/80 dark:from-gray-900 dark:to-gray-950 w-full h-full flex flex-col justify-stretch p-6 md:p-10 border-0 shadow-none rounded-none">
         <pre className="relative font-mono text-base leading-relaxed select-none w-full h-full min-h-0 flex-1 px-0 py-0 m-0 border-0 transition-all duration-500">
-          {/* Static, faded lines before the block */}
-          {highlightedLines.slice(0, adjustedStart).map((line, idx) => (
-            <div
-              key={`static-before-${idx}`}
-              className="opacity-70 text-gray-500 transition-all duration-300 px-2 py-0.5"
-              style={{ fontWeight: 400, fontSize: "1em", marginBottom: "2px" }}
-            >
-              <span dangerouslySetInnerHTML={{ __html: line }} />
-            </div>
-          ))}
-          {/* Animated current block as a group */}
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={`block-${adjustedStart}-${adjustedEnd}`}
-              layout
-              initial={{ opacity: 0, scale: 0.96, y: 40, boxShadow: '0 0 0px 0px rgba(0,0,0,0)' }}
-              animate={{
-                opacity: 1,
-                scale: 1.04,
-                y: 0,
-                background: blockColor,
-                boxShadow: '0 0 32px 8px rgba(0,0,0,0.10)',
-              }}
-              exit={{ opacity: 0, scale: 0.96, y: -40, boxShadow: '0 0 0px 0px rgba(0,0,0,0)' }}
-              transition={{ duration: 0.55, type: "spring", bounce: 0.18 }}
-              className="transition-all duration-500 ease-in-out px-4 py-2 rounded-2xl border-0 shadow-2xl relative z-10"
-              style={{ marginBottom: "2px", fontWeight: 700, fontSize: "1.13em", background: blockColor, border: 'none' }}
-            >
-              {highlightedLines.slice(adjustedStart, adjustedEnd + 1).map((line, idx) => (
-                <div key={`block-line-${adjustedStart + idx}`}>
+          {/* Block-by-block navigation and animation, Lydia Hallie style, CSS only */}
+          {highlightedLines.map((line, idx) => {
+            const isCurrentBlock = lineToBlockIndex
+              ? lineToBlockIndex[idx] === currentBlock
+              : (() => {
+                  const block = blockData[currentBlock];
+                  return block && idx >= block.start && idx <= block.end;
+                })();
+            if (isCurrentBlock) {
+              return (
+                <div
+                  key={`block-line-${idx}`}
+                  className={blockHighlightClass + " px-3 py-1 rounded-md relative z-10 shadow-lg"}
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "1.08em",
+                    marginBottom: "2px",
+                    background: blockGradient,
+                    borderLeftColor: "#38bdf8",
+                    boxShadow: "0 4px 24px 0 rgba(56,189,248,0.10)",
+                    transition: "background 0.4s, box-shadow 0.4s"
+                  }}
+                >
                   <span dangerouslySetInnerHTML={{ __html: line }} />
                 </div>
-              ))}
-            </motion.div>
-          </AnimatePresence>
-          {/* Static, faded lines after the block */}
-          {highlightedLines.slice(adjustedEnd + 1).map((line, idx) => (
-            <div
-              key={`static-after-${adjustedEnd + 1 + idx}`}
-              className="opacity-70 text-gray-500 transition-all duration-300 px-2 py-0.5"
-              style={{ fontWeight: 400, fontSize: "1em", marginBottom: "2px" }}
-            >
-              <span dangerouslySetInnerHTML={{ __html: line }} />
-            </div>
-          ))}
+              );
+            } else {
+              return (
+                <div
+                  key={`static-line-${idx}`}
+                  className="text-gray-700 dark:text-gray-300 px-2 py-0.5"
+                  style={{ fontWeight: 400, fontSize: "1em", marginBottom: "2px" }}
+                >
+                  <span dangerouslySetInnerHTML={{ __html: line }} />
+                </div>
+              );
+            }
+          })}
         </pre>
       </div>
+      {/* Navigation controls */}
       <div className="mt-4 flex items-center justify-center gap-4">
         <button
           className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 font-bold shadow"

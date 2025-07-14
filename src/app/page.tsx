@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import CodePanel from "../components/CodePanel";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
@@ -18,62 +18,144 @@ const LANGUAGE_OPTIONS = [
 
 function detectLanguage(code: string): string {
   if (/^\s*def |^\s*class |import |print\(/m.test(code)) return "python";
-  if (/^\s*#include |int main\(/m.test(code)) return "c";
+  if (/^\s*#include|int main\s*\(|\bprintf\b|\bscanf\b|\breturn\b|\bvoid\b|\bchar\b|\bint\b|\bfloat\b|\bdouble\b/m.test(code)) return "c";
   return "plaintext";
 }
 
+// Remove all Tree-sitter and paragraph splitting logic from the frontend
+// Use Gemini for both block splitting and explanation
+
+const GEMINI_API_KEY = "AIzaSyCLLTHV9_W_whqPZ0kVOk6qTEhm_ZM7Lls";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+
+const splitBlocksWithGemini = async (code: string, language: string) => {
+  const langHint = language === 'c' ? 'The following code is written in C. ' : '';
+  const prompt = `${langHint}Split the following code into logical blocks (functions, classes, top-level comments, and top-level statements). Return a JSON array of code blocks, in order. Each block should be a string of code. Do not include explanations or extra text.\n\nCode:\n${code}`;
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt }
+        ]
+      }
+    ]
+  };
+  const res = await fetch(GEMINI_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-goog-api-key": GEMINI_API_KEY
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error("Gemini API error (block split): " + res.status);
+  const data = await res.json();
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  let arr: string[] = [];
+  let cleanedText = rawText.trim();
+  if (cleanedText.startsWith('```json')) {
+    cleanedText = cleanedText.replace(/^```json/, '').replace(/```$/, '').trim();
+  } else if (cleanedText.startsWith('```')) {
+    cleanedText = cleanedText.replace(/^```/, '').replace(/```$/, '').trim();
+  }
+  try {
+    arr = JSON.parse(cleanedText);
+  } catch {
+    throw new Error("Gemini block split response (not JSON):\n" + rawText);
+  }
+  if (!Array.isArray(arr) || arr.length === 0) {
+    throw new Error("No blocks returned.\nGemini response:\n" + rawText);
+  }
+  // Convert to block objects with start/end
+  let idx = 0;
+  const blocks = arr.map(blockText => {
+    const lines = blockText.split(/\r?\n/);
+    const start = idx;
+    const end = idx + lines.length - 1;
+    idx = end + 1;
+    return { text: blockText, start, end };
+  });
+  return blocks;
+};
+
+// Helper: Robustly map Gemini blocks to original code lines and guarantee every line is assigned
+function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) {
+  const codeLines = originalCode.split('\n');
+  let used = Array(codeLines.length).fill(false);
+  let lastIdx = 0;
+  const mappedBlocks = [];
+  const lineToBlockIndex = Array(codeLines.length).fill(-1);
+
+  for (const [blockIdx, blockText] of geminiBlocks.entries()) {
+    // Normalize block text for matching
+    const blockLines = blockText.split('\n').map(l => l.trimEnd());
+    let found = false;
+    for (let i = lastIdx; i <= codeLines.length - blockLines.length; i++) {
+      let match = true;
+      for (let j = 0; j < blockLines.length; j++) {
+        if (codeLines[i + j].trimEnd() !== blockLines[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        mappedBlocks.push({
+          text: codeLines.slice(i, i + blockLines.length).join('\n'),
+          start: i,
+          end: i + blockLines.length - 1,
+        });
+        for (let k = i; k < i + blockLines.length; k++) {
+          used[k] = true;
+          lineToBlockIndex[k] = mappedBlocks.length - 1;
+        }
+        lastIdx = i + blockLines.length;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // skip unmatched blocks for now
+    }
+  }
+  // Add any unmatched lines as a final block
+  let miscLines = [];
+  for (let i = 0; i < codeLines.length; i++) {
+    if (!used[i]) miscLines.push(i);
+  }
+  if (miscLines.length > 0) {
+    mappedBlocks.push({
+      text: miscLines.map(i => codeLines[i]).join('\n'),
+      start: miscLines[0],
+      end: miscLines[miscLines.length - 1],
+    });
+    for (const i of miscLines) {
+      lineToBlockIndex[i] = mappedBlocks.length - 1;
+    }
+  }
+  return { mappedBlocks, lineToBlockIndex };
+}
+
 export default function Home() {
-  const [text, setText] = useState(
-    `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`
-  );
+  // On load, get code from localStorage if present
+  const [text, setText] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('codeInput');
+      if (stored) return stored;
+    }
+    return `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`;
+  });
   const [blockData, setBlockData] = useState<{ start: number; end: number; text: string; explanation: string }[]>([]);
+  const [lineToBlockIndex, setLineToBlockIndex] = useState<number[] | undefined>(undefined);
   const [aiLoading, setAILoading] = useState(false);
   const [currentBlock, setCurrentBlock] = useState(0);
   const [selectedLanguage, setSelectedLanguage] = useState("python");
   const [showLangWarning, setShowLangWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [extractedBlocks, setExtractedBlocks] = useState<{ start: number; end: number; text: string; explanation?: string }[]>([]);
-  const [blockApiLoading, setBlockApiLoading] = useState(false);
+  // Remove extractedBlocks and blockApiLoading
 
-  // Helper: fallback paragraph splitter
-  function extractBlocksFromText(text: string) {
-    const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
-    let idx = 0;
-    return paragraphs.map((para) => {
-      const lines = para.split(/\r?\n/);
-      const start = idx;
-      const end = idx + lines.length - 1;
-      idx = end + 1;
-      return { text: para, start, end };
-    });
-  }
-
-  // Replace the block extraction effect with an API call
-  React.useEffect(() => {
-    let cancelled = false;
-    async function fetchBlocks() {
-      setBlockApiLoading(true);
-      try {
-        const res = await fetch('/api/extract-blocks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: text, language: selectedLanguage })
-        });
-        if (!res.ok) throw new Error('Block extraction API error: ' + res.status);
-        const blocks = await res.json();
-        if (!cancelled && Array.isArray(blocks) && blocks.length > 0) {
-          setExtractedBlocks(blocks.map(b => ({ ...b, text: b.code })));
-        } else if (!cancelled) {
-          setExtractedBlocks([{ text, start: 0, end: text.split('\n').length - 1 }]);
-        }
-      } catch {
-        if (!cancelled) setExtractedBlocks([{ text, start: 0, end: text.split('\n').length - 1 }]);
-      }
-      setBlockApiLoading(false);
-    }
-    fetchBlocks();
-    return () => { cancelled = true; };
-  }, [text, selectedLanguage]);
+  // Remove extractBlocksFromText and any fallback block splitting logic
+  // Remove all Tree-sitter/paragraph splitting logic from the frontend
+  // Only use Gemini for block splitting and explanation
 
   // 1. Reset blockData and currentBlock when code or language changes
   React.useEffect(() => {
@@ -82,8 +164,17 @@ export default function Home() {
     setError(null);
   }, [text, selectedLanguage]);
 
+  // On window/tab close, remove code from localStorage
+  useEffect(() => {
+    const handleUnload = () => {
+      localStorage.removeItem('codeInput');
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, []);
+
   // 2. Always use the latest extractedBlocks for block navigation/highlighting before Gemini
-  const blocks = extractedBlocks;
+  const blocks = blockData;
 
   // 3. After Gemini, blockData is mapped from the latest extractedBlocks (with explanations)
   // 4. Navigation buttons and highlighting use blockData if available, else fallback to blocks
@@ -140,6 +231,7 @@ export default function Home() {
   );
 
   // Handler to trigger AI explanation for all blocks
+  // Only ever set text from user input or localStorage. Never overwrite text with Gemini output or processed code.
   const handleAIExplain = async () => {
     const detected = detectLanguage(text);
     if (detected !== selectedLanguage) {
@@ -151,23 +243,38 @@ export default function Home() {
     setBlockData([]);
     setCurrentBlock(0);
     setError(null);
-    // Use extractedBlocks for block splitting
-    const blocksToExplain = extractedBlocks.length > 0 ? extractedBlocks : [{ text, start: 0, end: text.split('\n').length - 1 }];
-    // Prepare prompt: full code and blocks, ask for explanations only
-    const prompt = `Here is some code:\n\n${text}\n\nThe code has been split into blocks. For each block, provide a beginner-friendly explanation.\nReturn a JSON array of explanations, one for each block, in order.\nDo NOT mention block numbers, indices, or repeat the code. Only return the explanations as a JSON array, no extra text.\n\nBlocks:\n${blocksToExplain.map((b, i) => b.text).join('\n---\n')}`;
-    const GEMINI_API_KEY = "AIzaSyCLLTHV9_W_whqPZ0kVOk6qTEhm_ZM7Lls";
-    const GEMINI_API_URL =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-    const body = {
-      contents: [
-        {
-          parts: [
-            { text: prompt }
-          ]
-        }
-      ]
-    };
     try {
+      // 1. Store code in localStorage (raw user input only)
+      localStorage.setItem('codeInput', text);
+      // 2. Split into blocks with Gemini (always, regardless of code type)
+      const geminiBlockTexts = await splitBlocksWithGemini(text, selectedLanguage);
+      // Robustly map Gemini blocks to original code lines
+      const { mappedBlocks: blocksToExplain, lineToBlockIndex } = mapBlocksToOriginalLines(text, geminiBlockTexts.map(b => b.text ?? b));
+      // Filter out empty blocks (but keep misc block if it covers any lines)
+      const nonEmptyBlocks = blocksToExplain.filter(b => b.text.trim().length > 0 && b.start <= b.end);
+      if (nonEmptyBlocks.length === 0) {
+        setError("No non-empty code blocks found.");
+        setAILoading(false);
+        return;
+      }
+      // 2. Get explanations for each block
+      // Use explicit block numbering and a reference example in the prompt
+      const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
+      let prompt;
+      if (selectedLanguage === 'c') {
+        prompt = `The following code blocks are written in C. For each block, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\nint foo() {\n    return 42;\n}\n\nBlock 2:\nint main() {\n    printf(\"%d\", foo());\n    return 0;\n}\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.",\n  "This block is the main function. It prints the result of calling foo, which is 42, and then returns 0."\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+      } else {
+        prompt = `For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in plain English. If the explanation includes code, format it as Markdown. Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\n\nExample input:\nBlock 1:\ndef foo():\n    return 42\n\nBlock 2:\nprint(foo())\n\nExample output:\n[\n  "This block defines a function called foo that returns the number 42.",\n  "This block prints the result of calling the foo function, which is 42."\n]\n\nNow, here are the blocks:\n${numberedBlocks}`;
+      }
+      const body = {
+        contents: [
+          {
+            parts: [
+              { text: prompt }
+            ]
+          }
+        ]
+      };
       const res = await fetch(GEMINI_API_URL, {
         method: "POST",
         headers: {
@@ -176,15 +283,11 @@ export default function Home() {
         },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error("Gemini API error: " + res.status);
+      if (!res.ok) throw new Error("Gemini API error (explanation): " + res.status);
       const data = await res.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      setError(null);
-      if (!rawText) {
-        setError("No response from Gemini. Try again or simplify your input.");
-        setBlockData([]);
-        setAILoading(false);
-        return;
+      if (selectedLanguage === 'c') {
+        console.log('Gemini explanation rawText (C):', rawText);
       }
       let arr: any[] = [];
       let cleanedText = rawText.trim();
@@ -196,25 +299,37 @@ export default function Home() {
       try {
         arr = JSON.parse(cleanedText);
       } catch {
-        setError("Gemini response (not JSON):\n" + rawText);
+        setError("Gemini explanation response (not JSON):\n" + rawText);
         setBlockData([]);
         setAILoading(false);
+        // Remove code from localStorage if error
+        localStorage.removeItem('codeInput');
         return;
       }
-      if (!Array.isArray(arr) || arr.length === 0) {
-        setError("No explanations returned. Try again or simplify your input.\nGemini response:\n" + rawText);
+      // If Gemini returns a single string instead of an array, treat as error
+      if (!Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
+        setError("Gemini did not return block-level explanations. Please try again.\nGemini response:\n" + rawText);
         setBlockData([]);
         setAILoading(false);
+        // Remove code from localStorage if error
+        localStorage.removeItem('codeInput');
         return;
       }
-      // Map explanations to blocks
-      const mapped = blocksToExplain.map((b, i) => ({
-        start: b.start,
-        end: b.end,
-        text: b.text,
-        explanation: typeof arr[i] === 'string' ? arr[i] : JSON.stringify(arr[i])
-      }));
+      // Map explanations to blocks by array index
+      const mapped = nonEmptyBlocks.map((b, i) => {
+        let explanation = arr[i];
+        if (explanation && typeof explanation === 'object') {
+          explanation = explanation.explanation || Object.values(explanation)[0] || JSON.stringify(explanation);
+        }
+        return {
+          start: b.start,
+          end: b.end,
+          text: b.text,
+          explanation: typeof explanation === 'string' ? explanation : JSON.stringify(explanation)
+        };
+      });
       setBlockData(mapped);
+      setLineToBlockIndex(lineToBlockIndex);
     } catch (e: any) {
       setError(e.message || "Unknown error while contacting Gemini API.");
       setBlockData([]);
@@ -285,6 +400,7 @@ export default function Home() {
                   onNextBlock={handleNextBlock}
                   totalBlocks={validBlocks.length}
                   language={selectedLanguage}
+                  lineToBlockIndex={lineToBlockIndex}
                 />
               </div>
               {/* Visual separator for desktop */}
@@ -301,7 +417,7 @@ export default function Home() {
       </main>
       {/* Footer */}
       <footer className="w-full py-4 text-center text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800">
-        &copy; {new Date().getFullYear()} Text Explainer. Powered by Next.js, Tailwind CSS, and Gemini.
+        &copy; {new Date().getFullYear()} Interactive code explainer.
       </footer>
     </div>
   );
