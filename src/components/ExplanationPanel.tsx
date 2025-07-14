@@ -1,4 +1,5 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
 
 const AISkeleton = () => (
   <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/40 rounded text-blue-900 dark:text-blue-100 text-sm border border-blue-200 dark:border-blue-700 animate-pulse">
@@ -20,7 +21,7 @@ const ExplanationPanel: React.FC<ExplanationPanelProps> = ({ aiExplanation, aiLo
       {aiLoading && <AISkeleton />}
       {aiExplanation && !aiLoading && (
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/40 rounded text-blue-900 dark:text-blue-100 text-sm whitespace-pre-line border border-blue-200 dark:border-blue-700 transition-opacity duration-200 animate-fade-in">
-          {aiExplanation}
+          <ReactMarkdown>{aiExplanation}</ReactMarkdown>
         </div>
       )}
     </div>
