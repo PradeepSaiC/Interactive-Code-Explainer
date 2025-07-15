@@ -31,8 +31,35 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const mainPrompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose and can be easily explained to a beginner. Blocks should not be too large or too small; group related lines, but do not group unrelated code. Preserve all line breaks and whitespace exactly as in the original code. Return only a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text.`;
-  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible explainable units, such as individual statements or lines. Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const mainPrompt = `You are an expert code explainer. Your task is to split the following code into logical, contiguous blocks that are best suited for clear, beginner-friendly explanations. Each block should represent a single logical unit (such as a function, class, import section, variable declaration group, or a related set of statements).
+
+Guidelines:
+- Each block should be self-contained and easy to explain on its own.
+- Do not split in the middle of a logical unit (e.g., inside a function, class, or loop).
+- Preserve all original whitespace and empty lines exactly as in the input.
+- Blocks should be contiguous and in the same order as the original code.
+- Do not skip or duplicate any lines.
+- If there are consecutive empty lines, keep them within the relevant block.
+- Do not add any explanations, comments, or extra text—output only the code blocks.
+- The blocks should be suitable for providing clear, beginner-friendly explanations for each.
+
+Input code:
+\`\`\`${language}\`\`\`
+\`\`\`
+[PASTE CODE HERE]
+\`\`\`
+
+Output format:
+Return an array of code blocks, each as a string, preserving all formatting and whitespace. Do not include any explanations or extra text.
+
+Example Output:
+[
+  "import ...\nimport ...\n",
+  "function foo() {\n  ...\n}\n",
+  "// ... more blocks ..."
+]
+`;
+  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible explainable units, such as individual statements or lines. Return an array of code blocks, each as a string, preserving all formatting and whitespace. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the array of code blocks.`;
 
   async function getBlocks(prompt: string) {
     const body = {
@@ -90,10 +117,11 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   let searchStart = 0;
 
   for (const blockText of geminiBlocks) {
-    // Try exact block match (including empty lines and all whitespace)
     const blockLines = blockText.split('\n');
     const blockLineCount = blockLines.length;
     let found = false;
+
+    // 1. Exact match (all whitespace, all lines)
     for (let i = searchStart; i <= codeLines.length - blockLineCount; i++) {
       const candidate = codeLines.slice(i, i + blockLineCount);
       if (
@@ -115,19 +143,92 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
         break;
       }
     }
+
+    // 2. Fuzzy match (ignore whitespace, preserve line count)
     if (!found) {
-      // Fallback: fuzzy line-by-line matching (trimmed, but preserve empty lines)
-      let start = -1, end = -1, blockLineIdx = 0;
-      for (let i = 0; i < codeLines.length && blockLineIdx < blockLines.length; i++) {
+      for (let i = searchStart; i <= codeLines.length - blockLineCount; i++) {
+        const candidate = codeLines.slice(i, i + blockLineCount);
         if (
-          !used[i] &&
-          (codeLines[i] === blockLines[blockLineIdx] || codeLines[i].trim() === blockLines[blockLineIdx].trim())
+          candidate.length === blockLines.length &&
+          candidate.every((line, idx) => line.trim() === blockLines[idx].trim()) &&
+          candidate.every((_, idx) => !used[i + idx])
         ) {
+          mappedBlocks.push({
+            text: candidate.join('\n'),
+            start: i,
+            end: i + blockLineCount - 1,
+          });
+          for (let k = i; k < i + blockLineCount; k++) {
+            used[k] = true;
+            lineToBlockIndex[k] = mappedBlocks.length - 1;
+          }
+          searchStart = i + blockLineCount;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    // 3. Fuzzy match ignoring empty lines in both block and code
+    if (!found) {
+      const blockNonEmpty = blockLines.map((l, idx) => ({ l, idx })).filter(x => x.l.trim() !== '');
+      for (let i = searchStart; i <= codeLines.length - blockNonEmpty.length; i++) {
+        let match = true;
+        for (let j = 0; j < blockNonEmpty.length; j++) {
+          const codeIdx = i + j;
+          if (
+            codeLines[codeIdx].trim() !== blockNonEmpty[j].l.trim() ||
+            used[codeIdx]
+          ) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          // Map block lines to code lines, skipping empty lines in block
+          let codeIdx = i;
+          let blockIdx = 0;
+          let start = -1, end = -1;
+          while (blockIdx < blockLines.length && codeIdx < codeLines.length) {
+            if (blockLines[blockIdx].trim() === '') {
+              blockIdx++;
+              continue;
+            }
+            if (codeLines[codeIdx].trim() === blockLines[blockIdx].trim() && !used[codeIdx]) {
+              if (start === -1) start = codeIdx;
+              end = codeIdx;
+              used[codeIdx] = true;
+              lineToBlockIndex[codeIdx] = mappedBlocks.length;
+              blockIdx++;
+              codeIdx++;
+            } else {
+              codeIdx++;
+            }
+          }
+          if (start !== -1 && end !== -1) {
+            mappedBlocks.push({
+              text: codeLines.slice(start, end + 1).join('\n'),
+              start,
+              end,
+            });
+            found = true;
+            searchStart = end + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    // 4. If block is only empty lines, map to next available empty lines
+    if (!found && blockLines.every(l => l.trim() === '')) {
+      let start = -1, end = -1, count = 0;
+      for (let i = searchStart; i < codeLines.length && count < blockLines.length; i++) {
+        if (!used[i] && codeLines[i].trim() === '') {
           if (start === -1) start = i;
           end = i;
           used[i] = true;
           lineToBlockIndex[i] = mappedBlocks.length;
-          blockLineIdx++;
+          count++;
         }
       }
       if (start !== -1 && end !== -1) {
@@ -136,26 +237,31 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           start,
           end,
         });
-      } else {
-        // Last fallback: assign next unmatched lines
-        const unmatched = [];
-        for (let i = 0; i < codeLines.length && unmatched.length < blockLines.length; i++) {
-          if (!used[i]) {
-            unmatched.push(i);
-            used[i] = true;
-            lineToBlockIndex[i] = mappedBlocks.length;
-          }
+        found = true;
+        searchStart = end + 1;
+      }
+    }
+
+    // 5. Last fallback: assign next unmatched lines
+    if (!found) {
+      const unmatched = [];
+      for (let i = 0; i < codeLines.length && unmatched.length < blockLines.length; i++) {
+        if (!used[i]) {
+          unmatched.push(i);
+          used[i] = true;
+          lineToBlockIndex[i] = mappedBlocks.length;
         }
-        if (unmatched.length) {
-          mappedBlocks.push({
-            text: unmatched.map(i => codeLines[i]).join('\n'),
-            start: unmatched[0],
-            end: unmatched[unmatched.length - 1],
-          });
-        }
+      }
+      if (unmatched.length) {
+        mappedBlocks.push({
+          text: unmatched.map(i => codeLines[i]).join('\n'),
+          start: unmatched[0],
+          end: unmatched[unmatched.length - 1],
+        });
       }
     }
   }
+
   // Add any remaining unmatched lines as their own blocks
   for (let i = 0; i < codeLines.length; i++) {
     if (!used[i]) {
@@ -522,7 +628,6 @@ export default function Home() {
       {/* Header */}
       <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
         <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base sm:text-lg md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer (Beta)</code>
           <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{letterSpacing: '0.05em'}}>Beta</span>
         </h1>
       </header>
