@@ -31,7 +31,7 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const prompt = `Divide the following code into explainable blocks for accurate mapping. Each block should correspond to a logical unit (function, class, or related lines) and must be a contiguous set of lines from the original code. Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const prompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose (such as a function, class, loop, conditional, or a group of related statements). If there is a complex or hard-to-understand section, keep it as a single block. Do not split blocks too small (avoid single-line blocks unless necessary), and do not make blocks too large (avoid grouping unrelated code). Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
   const body = {
     contents: [
       {
