@@ -286,7 +286,7 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
 
   return (
     <div className="h-full w-full p-2 sm:p-4 bg-gray-900 text-white rounded-lg shadow-xl flex flex-col border border-gray-800/60 min-w-0 code-panel">
-      <div className="flex-1 overflow-auto transition-opacity duration-200 min-w-0">
+      <div className="flex-1 overflow-auto transition-opacity duration-200 min-w-0" style={{ height: '480px', maxHeight: '480px', minHeight: '320px' }}>
         <CodeMirror
           value={code}
           height="100%"
