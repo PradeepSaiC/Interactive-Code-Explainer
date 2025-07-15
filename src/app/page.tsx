@@ -103,6 +103,16 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
         candidate.every((line, idx) => line === blockLines[idx]) &&
         candidate.every((_, idx) => !used[i + idx])
       ) {
+        // Attach trailing empty lines to the previous block if not at start
+        if (candidate.every(line => line.trim() === '') && mappedBlocks.length > 0) {
+          for (let k = i; k < i + blockLineCount; k++) {
+            used[k] = true;
+            lineToBlockIndex[k] = mappedBlocks.length - 1;
+          }
+          searchStart = i + blockLineCount;
+          found = true;
+          break;
+        }
         mappedBlocks.push({
           text: candidate.join('\n'),
           start: i,
@@ -128,6 +138,16 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           candidate.every((line, idx) => line.trim() === blockLines[idx].trim()) &&
           candidate.every((_, idx) => !used[i + idx])
         ) {
+          // Attach trailing empty lines to the previous block if not at start
+          if (candidate.every(line => line.trim() === '') && mappedBlocks.length > 0) {
+            for (let k = i; k < i + blockLineCount; k++) {
+              used[k] = true;
+              lineToBlockIndex[k] = mappedBlocks.length - 1;
+            }
+            searchStart = i + blockLineCount;
+            found = true;
+            break;
+          }
           mappedBlocks.push({
             text: candidate.join('\n'),
             start: i,
@@ -196,22 +216,19 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       }
     }
 
-    // 4. If block is only empty lines, map to previous non-empty block (or next available empty lines if at start)
-    if (!found && blockLines.every(l => l.trim() === '')) {
-      let start = -1, end = -1, count = 0;
+    // 4. If block is only empty lines, attach to previous block if possible
+    if (!found && blockLines.every(l => l.trim() === '') && mappedBlocks.length > 0) {
+      let count = 0;
       for (let i = searchStart; i < codeLines.length && count < blockLines.length; i++) {
         if (!used[i] && codeLines[i].trim() === '') {
-          if (start === -1) start = i;
-          end = i;
           used[i] = true;
-          lineToBlockIndex[i] = lastNonEmptyBlockIdx >= 0 ? lastNonEmptyBlockIdx : mappedBlocks.length;
+          lineToBlockIndex[i] = mappedBlocks.length - 1;
           count++;
         }
       }
-      if (start !== -1 && end !== -1) {
-        // Do not create a separate block for only empty lines, just assign them to the previous non-empty block
+      if (count === blockLines.length) {
         found = true;
-        searchStart = end + 1;
+        searchStart += count;
       }
     }
 
@@ -236,12 +253,11 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
     }
   }
 
-  // Add any remaining unmatched lines as their own blocks
+  // Add any remaining unmatched lines as their own blocks, but attach empty lines to previous block if possible
   for (let i = 0; i < codeLines.length; i++) {
     if (!used[i]) {
-      // Assign stray empty lines to previous non-empty block if possible
-      if (codeLines[i].trim() === '' && lastNonEmptyBlockIdx >= 0) {
-        lineToBlockIndex[i] = lastNonEmptyBlockIdx;
+      if (codeLines[i].trim() === '' && mappedBlocks.length > 0) {
+        lineToBlockIndex[i] = mappedBlocks.length - 1;
         used[i] = true;
         continue;
       }
