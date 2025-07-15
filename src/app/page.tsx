@@ -642,9 +642,7 @@ export default function Home() {
                 value={selectedLanguage}
                 onChange={e => {
                   const newLang = e.target.value;
-                  if (text === DEFAULT_CODE_SAMPLES[selectedLanguage]) {
-                    setText(DEFAULT_CODE_SAMPLES[newLang] || '');
-                  }
+                  setText(DEFAULT_CODE_SAMPLES[newLang] || '');
                   setSelectedLanguage(newLang);
                 }}
                 aria-label="Select programming language"
