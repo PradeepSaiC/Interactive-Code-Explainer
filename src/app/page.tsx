@@ -5,6 +5,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import CodePanel from "../components/CodePanel";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
+import Link from 'next/link';
 
 // Remove the extractBlocksFromText and async effect at the top
 
@@ -620,15 +621,17 @@ export default function Home() {
       {/* Header */}
       <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
-          {/* Logo: Colorful code icon */}
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 shadow text-white mr-2">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
-              <rect x="18" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
-              <rect x="8" y="3" width="8" height="3" rx="1.5" fill="currentColor"/>
-              <rect x="8" y="18" width="8" height="3" rx="1.5" fill="currentColor"/>
-            </svg>
-          </span>
+          {/* Logo: Colorful code icon, clickable */}
+          <Link href="/" passHref legacyBehavior>
+            <a onClick={() => { setText(DEFAULT_CODE_SAMPLES['python']); setSelectedLanguage('python'); }} className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 shadow text-white mr-2 cursor-pointer" aria-label="Home">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
+                <rect x="18" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
+                <rect x="8" y="3" width="8" height="3" rx="1.5" fill="currentColor"/>
+                <rect x="8" y="18" width="8" height="3" rx="1.5" fill="currentColor"/>
+              </svg>
+            </a>
+          </Link>
           <span className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white select-none">
             Interactive Code Explainer
           </span>
