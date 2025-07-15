@@ -31,7 +31,7 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const mainPrompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose (such as a function, class, loop, conditional, or a group of related statements). If there is a complex or hard-to-understand section, keep it as a single block. Do not split blocks too small (avoid single-line blocks unless necessary), and do not make blocks too large (avoid grouping unrelated code). Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const mainPrompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose and can be easily explained to a beginner. Blocks should not be too large or too small; group related lines, but do not group unrelated code. Preserve all line breaks and whitespace exactly as in the original code. Return only a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text.`;
   const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible explainable units, such as individual statements or lines. Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
 
   async function getBlocks(prompt: string) {
@@ -287,7 +287,7 @@ export default function Home() {
       // 3. Get explanations for each block
       // Use explicit block numbering and a reference example in the prompt
       const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
-      let prompt = "";
+      let prompt = `For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format. Do not mention AI, models, or that this is an automated explanation. Do not mention parsing, block splitting, or any technical process. Focus on what the code does, why, and how, in simple terms. If a block is complex, break down the logic step by step. Never say “this is a basic block overview” or similar. Return only a JSON array of explanation strings, one for each block, in order.`;
       if (selectedLanguage === 'c' || selectedLanguage === 'cpp') {
         prompt =
           "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
@@ -460,7 +460,7 @@ export default function Home() {
           start: block.start,
           end: block.end,
           text: block.text,
-          explanation: `Block ${index + 1} (lines ${block.start + 1}-${block.end + 1}):\n\nThis code block contains:\n\`\`\`${selectedLanguage}\n${block.text}\n\`\`\`\n\n*Note: AI explanation parsing failed. This is a basic block overview.*`
+          explanation: 'Could not generate an explanation for this block.'
         }));
         setBlockData(fallbackExplanations);
         setLineToBlockIndex(lineToBlockIndex);
