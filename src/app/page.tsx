@@ -286,8 +286,7 @@ export default function Home() {
       // 3. Get explanations for each block
       // Use explicit block numbering and a reference example in the prompt
       const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
-      const tripleBacktick = '```';
-      let prompt;
+      let prompt = "";
       if (selectedLanguage === 'c' || selectedLanguage === 'cpp') {
         prompt =
           "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
@@ -372,7 +371,7 @@ export default function Home() {
       if (selectedLanguage === 'c') {
         // addLog('Gemini explanation rawText (C): ' + rawText); // Removed
       }
-      let arr: any[] = [];
+      let arr: unknown[] = [];
       let cleanedText = rawText.trim();
       
       // Handle Gemini responses wrapped in markdown code blocks
@@ -495,22 +494,25 @@ export default function Home() {
         if (inCode) result.push('```');
         return result.join('\n').replace(/\\n/g, '\n');
       }
-      const mapped = nonEmptyBlocks.map((b, i) => {
-        let explanation = arr[i];
-        if (explanation && typeof explanation === 'object') {
-          explanation = explanation.explanation || Object.values(explanation)[0] || JSON.stringify(explanation);
+      const explanations: string[] = arr.map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          // Try to extract explanation property or stringify
+          return (item as { explanation?: string })?.explanation || JSON.stringify(item);
         }
-        // Post-process: ensure code blocks are formatted for ReactMarkdown
-        let lang = selectedLanguage === 'cpp' ? 'cpp' : selectedLanguage;
-        explanation = typeof explanation === 'string' ? ensureMarkdownBlocks(explanation, lang) : JSON.stringify(explanation);
+        return String(item);
+      });
+      const mapped = nonEmptyBlocks.map((b, i) => {
         return {
           start: b.start,
           end: b.end,
           text: b.text,
-          explanation
+          explanation: explanations[i] || ''
         };
       });
-      setBlockData(mapped);
+      setBlockData(
+        mapped.map((b: { start: number; end: number; text: string }, i: number) => ({ ...b, explanation: explanations[i] || '' }))
+      );
       setLineToBlockIndex(lineToBlockIndex);
     } catch (e: any) {
       setError('An error occurred. Please try again later.');

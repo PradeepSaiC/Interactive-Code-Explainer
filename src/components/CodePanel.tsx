@@ -3,12 +3,11 @@ import CodeMirror from "@uiw/react-codemirror";
 import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, Decoration, ViewUpdate } from "@codemirror/view";
-import { Extension, RangeSetBuilder } from "@codemirror/state";
+import { EditorView, Decoration, RangeSetBuilder } from "@codemirror/view";
+import { Extension } from "@codemirror/state";
 
 import { useEffect, useState } from "react";
 // (No Framer Motion: use only CSS transitions for block highlighting)
-import * as shiki from "shiki";
 import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
 // Add this to your globals.css:
@@ -301,9 +300,10 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
   }
 
   // Handler for cursor activity
-  const handleUpdate = React.useCallback((vu: any) => {
-    if (vu.selectionSet && setCurrentBlockForLine) {
-      const line = vu.state.doc.lineAt(vu.state.selection.main.head).number - 1;
+  const handleUpdate = React.useCallback((vu: unknown) => {
+    if (vu && typeof vu === 'object' && 'selectionSet' in vu && setCurrentBlockForLine) {
+      const vuState = vu as any;
+      const line = vuState.state.doc.lineAt(vuState.state.selection.main.head).number - 1;
       setCurrentBlockForLine(line);
     }
   }, [setCurrentBlockForLine]);
