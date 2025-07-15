@@ -305,10 +305,10 @@ export default function Home() {
     setError(null);
   }, [text, selectedLanguage]);
 
-  // On window/tab close, remove code from localStorage
+  // On window/tab close, remove all localStorage data
   useEffect(() => {
     const handleUnload = () => {
-      localStorage.removeItem('codeInput');
+      localStorage.clear();
     };
     window.addEventListener('beforeunload', handleUnload);
     return () => window.removeEventListener('beforeunload', handleUnload);
@@ -685,30 +685,45 @@ export default function Home() {
             )}
           </div>
         ) : (
-          <div className="w-full flex flex-col lg:flex-row gap-4 md:gap-8 transition-all duration-300 max-w-full">
-            <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
-              <CustomCodeVisualizer
-                code={text}
-                blockData={validBlocks}
-                currentBlock={currentBlock}
-                onPrevBlock={handlePrevBlock}
-                onNextBlock={handleNextBlock}
-                totalBlocks={validBlocks.length}
-                language={selectedLanguage}
-                lineToBlockIndex={lineToBlockIndex}
-                themeIdx={themeIdx}
-              />
+          <>
+            <div className="flex w-full items-center mb-2 md:mb-4 mt-[-1.5rem]">
+              <button
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition text-xl text-gray-500 dark:text-gray-300 mr-2"
+                aria-label="Back to code input"
+                onClick={() => { setBlockData([]); setError(null); }}
+                tabIndex={0}
+              >
+                <span className="sr-only">Back to Edit</span>
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14.5 4L8.5 11L14.5 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             </div>
-            <div className="hidden lg:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" aria-hidden="true" />
-            <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
-              <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full h-full" style={{height: '100%'}}>
-                <ExplanationPanel
-                  aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
-                  aiLoading={aiLoading}
+            <div className="w-full flex flex-col lg:flex-row gap-4 md:gap-8 transition-all duration-300 max-w-full">
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
+                <CustomCodeVisualizer
+                  code={text}
+                  blockData={validBlocks}
+                  currentBlock={currentBlock}
+                  onPrevBlock={handlePrevBlock}
+                  onNextBlock={handleNextBlock}
+                  totalBlocks={validBlocks.length}
+                  language={selectedLanguage}
+                  lineToBlockIndex={lineToBlockIndex}
+                  themeIdx={themeIdx}
                 />
               </div>
+              <div className="hidden lg:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" aria-hidden="true" />
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
+                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full h-full" style={{height: '100%'}}>
+                  <ExplanationPanel
+                    aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
+                    aiLoading={aiLoading}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </main>
       {/* Footer */}
