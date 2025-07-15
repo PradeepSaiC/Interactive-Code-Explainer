@@ -31,7 +31,22 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const prompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose (such as a function, class, loop, conditional, or a group of related statements). If there is a complex or hard-to-understand section, keep it as a single block. Do not split blocks too small (avoid single-line blocks unless necessary), and do not make blocks too large (avoid grouping unrelated code). Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const prompt = `Divide the following code into the smallest *logically meaningful* blocks possible.
+
+Each block must:
+- Be a contiguous set of lines that together perform **a single conceptual task** — even if that task is just one line.
+- Reflect what the code *does*, not just what it *is*. For example, a multi-step calculation or a decision flow should be its own block, even if it happens inside a function or loop.
+- Be explainable on its own, without needing surrounding lines.
+- Be separated even if the lines belong to the same method or loop, as long as they serve different micro-purposes (e.g., setup vs. core logic vs. final step).
+- Include even single-line blocks if they are important (like a key print, assignment, or return).
+
+Do **not** group together unrelated operations just because they are within the same scope (function, loop, class, etc).
+
+Return only a **JSON array** of these code blocks, **in order**, where:
+- Each block is a string (preserve exact formatting, indentation, and line breaks).
+- Do **not** modify, add, or remove any code or whitespace.
+- Do **not** include explanations, comments, or extra text — just return the raw JSON array.`;
+
   const body = {
     contents: [
       {
@@ -520,7 +535,6 @@ export default function Home() {
         {error && (
           <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-red-100 via-yellow-100 to-red-100 dark:from-red-900 dark:via-yellow-900 dark:to-red-900 text-red-900 dark:text-yellow-100 border-2 border-red-300 dark:border-red-700 font-bold text-base shadow-lg max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
             {error}
-            <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">See Debug Log for more details.</div>
           </div>
         )}
         {blockSplitWarning && (
