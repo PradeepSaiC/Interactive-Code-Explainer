@@ -29,7 +29,7 @@ const ExplanationPanel: React.FC<ExplanationPanelProps> = ({ aiExplanation, aiLo
           <ReactMarkdown
             rehypePlugins={[rehypeHighlight]}
             components={{
-              code({children, className, ...props}: any) {
+              code({children, className, ...props}: React.HTMLAttributes<HTMLElement>) {
                 const isInline = !(className && className.startsWith('language-'));
                 return !isInline ? (
                   <pre className={"rounded-lg p-2 sm:p-3 bg-gray-900 text-white text-xs sm:text-sm my-2 " + (className || "") }

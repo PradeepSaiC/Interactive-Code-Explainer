@@ -28,8 +28,8 @@ const LANG_GRAMMARS: Record<string, any> = {
 };
 
 // Use 'let' for parser and loadedLanguages if reassigned
-let parser: unknown = null;
-let loadedLanguages: Record<string, unknown> = {};
+const parser: unknown = null;
+const loadedLanguages: Record<string, unknown> = {};
 
 function getBlockNodeTypes(language: string): string[] {
   switch (language) {

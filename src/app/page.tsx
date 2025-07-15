@@ -514,7 +514,7 @@ export default function Home() {
         mapped.map((b: { start: number; end: number; text: string }, i: number) => ({ ...b, explanation: explanations[i] || '' }))
       );
       setLineToBlockIndex(lineToBlockIndex);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError('An error occurred. Please try again later.');
       setBlockData([]);
     }

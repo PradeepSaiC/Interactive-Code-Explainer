@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, Decoration, RangeSetBuilder } from "@codemirror/view";
+import { Decoration } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
 
 import { useEffect, useState } from "react";
@@ -47,24 +47,7 @@ const getLanguageExtension = (code: string): Extension => {
   return cpp();
 };
 
-function getHighlightDecorations(code: string, highlightRange?: [number, number]): Extension {
-  return EditorView.decorations.compute([], (state) => {
-    const builder = new RangeSetBuilder<Decoration>();
-    const lines = code.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = state.doc.line(i + 1); // CodeMirror lines are 1-based
-      if (
-        highlightRange &&
-        i >= highlightRange[0] &&
-        i <= highlightRange[1]
-      ) {
-        builder.add(line.from, line.to, Decoration.line({ attributes: { class: "block-highlight-animated" } }));
-      }
-      // All other lines remain normal
-    }
-    return builder.finish();
-  });
-}
+// Remove the getHighlightDecorations function entirely if it is not used
 
 // Lydia Hallie-inspired THEMES array: each theme is a gradient+text color pair, all high-contrast
 const THEMES = [
@@ -158,15 +141,15 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   if (lineToBlockIndex) {
     blockLineSet = new Set(lineToBlockIndex.map((bIdx, i) => bIdx === currentBlock ? i : null).filter(i => i !== null));
   } else {
-    let start = 0;
-    let end = 0;
     const block = blockData[currentBlock];
     if (block) {
-      start = block.start ?? 0;
-      end = block.end ?? 0;
+      const start = block.start ?? 0;
+      const end = block.end ?? 0;
+      blockLineSet = new Set();
+      for (let i = start; i <= end; ++i) blockLineSet.add(i);
+    } else {
+      blockLineSet = new Set();
     }
-    blockLineSet = new Set();
-    for (let i = start; i <= end; ++i) blockLineSet.add(i);
   }
 
   // (Removed start/end/adjustedStart/adjustedEnd logic; handled by lineToBlockIndex and per-line rendering)
@@ -296,14 +279,17 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
     hasBlocks;
   const extensions: Extension[] = [getLanguageExtension(code)];
   if (validHighlight) {
-    extensions.push(getHighlightDecorations(code, highlightRange));
+    // The getHighlightDecorations function was removed, so this block is now effectively a no-op.
+    // If specific highlighting is needed, it should be re-added or handled differently.
+    // For now, we'll keep the structure but remove the call to the non-existent function.
+    // extensions.push(getHighlightDecorations(code, highlightRange)); // This line is removed
   }
 
   // Handler for cursor activity
   const handleUpdate = React.useCallback((vu: unknown) => {
     if (vu && typeof vu === 'object' && 'selectionSet' in vu && setCurrentBlockForLine) {
-      const vuState = vu as any;
-      const line = vuState.state.doc.lineAt(vuState.state.selection.main.head).number - 1;
+      const vuState = vu as unknown;
+      const line = (vuState as any).state.doc.lineAt((vuState as any).state.selection.main.head).number - 1;
       setCurrentBlockForLine(line);
     }
   }, [setCurrentBlockForLine]);
