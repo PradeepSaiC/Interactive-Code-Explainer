@@ -31,7 +31,7 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const prompt = `Divide the following code into explainable blocks. Return a JSON array of code blocks, in order. Each block should be a string of code. Do not include explanations or extra text.\n\nCode:\n${code}`;
+  const prompt = `Divide the following code into logical blocks for explanation. Return a JSON array of code blocks, in order. Each block must be a substring of the original code, with lines and whitespace preserved exactly as in the input. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
   const body = {
     contents: [
       {
