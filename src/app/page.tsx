@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import CodePanel from "../components/CodePanel";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
@@ -36,12 +36,11 @@ function detectLanguage(code: string): string {
 // Remove all Tree-sitter and paragraph splitting logic from the frontend
 // Use Gemini for both block splitting and explanation
 
-const GEMINI_API_KEY = "AIzaSyCLLTHV9_W_whqPZ0kVOk6qTEhm_ZM7Lls";
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const langHint = language === 'c' ? 'The following code is written in C. ' : '';
-  const prompt = `${langHint}Split the following code into logical blocks (functions, classes, top-level comments, and top-level statements). Return a JSON array of code blocks, in order. Each block should be a string of code. Do not include explanations or extra text.\n\nCode:\n${code}`;
+  const prompt = `Divide the following code into explainable blocks. Return a JSON array of code blocks, in order. Each block should be a string of code. Do not include explanations or extra text.\n\nCode:\n${code}`;
   const body = {
     contents: [
       {
@@ -55,7 +54,7 @@ const splitBlocksWithGemini = async (code: string, language: string) => {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-goog-api-key": GEMINI_API_KEY
+      "X-goog-api-key": GEMINI_API_KEY || ""
     },
     body: JSON.stringify(body)
   });
@@ -72,21 +71,14 @@ const splitBlocksWithGemini = async (code: string, language: string) => {
   try {
     arr = JSON.parse(cleanedText);
   } catch {
-    throw new Error("Gemini block split response (not JSON):\n" + rawText);
+    // If parsing fails, treat the entire code as a single block
+    arr = [code];
   }
   if (!Array.isArray(arr) || arr.length === 0) {
-    throw new Error("No blocks returned.\nGemini response:\n" + rawText);
+    // If still no blocks, treat the entire code as a single block
+    arr = [code];
   }
-  // Convert to block objects with start/end
-  let idx = 0;
-  const blocks = arr.map(blockText => {
-    const lines = blockText.split(/\r?\n/);
-    const start = idx;
-    const end = idx + lines.length - 1;
-    idx = end + 1;
-    return { text: blockText, start, end };
-  });
-  return blocks;
+  return arr;
 };
 
 // Helper: Robustly map Gemini blocks to original code lines and guarantee every line is assigned
@@ -277,8 +269,13 @@ export default function Home() {
       localStorage.setItem('codeInput', text);
       // 2. Split into blocks with Gemini (always, regardless of code type)
       const geminiBlockTexts = await splitBlocksWithGemini(text, selectedLanguage);
+      if (geminiBlockTexts.length === 1 && geminiBlockTexts[0] === text) {
+        setBlockSplitWarning('Could not split code into blocks. Showing explanation for the entire code.');
+      } else {
+        setBlockSplitWarning(null);
+      }
       // Robustly map Gemini blocks to original code lines
-      const { mappedBlocks: blocksToExplain, lineToBlockIndex } = mapBlocksToOriginalLines(text, geminiBlockTexts.map(b => b.text ?? b));
+      const { mappedBlocks: blocksToExplain, lineToBlockIndex } = mapBlocksToOriginalLines(text, geminiBlockTexts);
       // Filter out empty blocks (but keep misc block if it covers any lines)
       const nonEmptyBlocks = blocksToExplain.filter(b => b.text.trim().length > 0 && b.start <= b.end);
       if (nonEmptyBlocks.length === 0) {
@@ -286,48 +283,71 @@ export default function Home() {
         setAILoading(false);
         return;
       }
-      // 2. Get explanations for each block
+      // 3. Get explanations for each block
       // Use explicit block numbering and a reference example in the prompt
       const numberedBlocks = nonEmptyBlocks.map((b, i) => `Block ${i + 1} (lines ${b.start + 1}-${b.end + 1}):\n${b.text}`).join('\n\n');
       const tripleBacktick = '```';
       let prompt;
-      if (selectedLanguage === 'java') {
+      if (selectedLanguage === 'c' || selectedLanguage === 'cpp') {
         prompt =
-          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
-          "- For Java, split each class into separate blocks for each method or constructor, not just the whole class. If there are top-level comments or fields, treat them as separate blocks as well.\\n" +
-          "- Format any code as a code block in Markdown with the correct language label.\\n" +
-          "- For inline code, use single backticks (like this).\\n" +
-          "- Never output language names (like 'java') on their own line.\\n" +
-          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
-          "- Do not include any formatting that would break Markdown rendering.\\n" +
-          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
-          "Example input: Block 1: public class HelloWorld {\\n    public static void main(String[] args) {\\n        System.out.println(\\\"Hello, World!\\\");\\n    }\\n    private void greet() {\\n        System.out.println(\\\"Greetings!\\\");\\n    }\\n}\\n" +
-          "Example output: [\\\"This block defines the main method, which is the entry point of the program. It prints 'Hello, World!' to the console. Newline Newline Java code for main method.\\\", \\\"This block defines a private method called greet that prints 'Greetings!' to the console. Newline Newline Java code for greet method.\\\"]\\n\\n" +
-          "Now, here are the blocks: " + numberedBlocks;
-      } else if (selectedLanguage === 'c' || selectedLanguage === 'cpp') {
-        prompt =
-          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
-          "- If the explanation includes code, always wrap it in triple backticks (`) with the language tag (e.g., `" + selectedLanguage + "`) on the same line.\\n" +
-          "- For inline code, use single backticks ( like this ).\\n" +
+          "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- IMPORTANT: Return EXPLANATIONS, not the code itself. Do not return the code blocks as-is.\\n" +
+          "- If the explanation includes code examples, always wrap them in triple backticks with the language tag (e.g., `" + selectedLanguage + "`).\\n" +
+          "- For inline code references, use single backticks (like `variable_name`).\\n" +
           "- Never output language names (like 'c++' or 'cpp') on their own line.\\n" +
           "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
           "- Do not include any formatting that would break Markdown rendering.\\n" +
-          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order.\\n" +
+          "- Each explanation should explain what the code does, not repeat the code.\\n" +
+          "- Focus on explaining the purpose, logic, and functionality of each code block.\\n\\n" +
           "Example input:\\nBlock 1:\\nint foo() {\\n    return 42;\\n}\\n\\nBlock 2:\\nint main() {\\n    printf(\\\"%d\\\", foo());\\n    return 0;\\n}\\n\\n" +
-          "Example output:[\\\"This block defines a function called `foo` that returns the number 42.\\n\\n```" + selectedLanguage + "\\nint foo() {\\n    return 42;\\n}\\n```\\\",\\\"This block is the main function. It prints the result of calling `foo`, which is 42, and then returns 0.\\n\\n```" + selectedLanguage + "\\nint main() {\\n    printf(\\\"%d\\\", foo());\\n    return 0;\\n}\\n```\\\"]\\n\\n" +
-          "Now, here are the blocks:\\n" + numberedBlocks;
+          "Example output:[\\\"This block defines a function called `foo` that returns the number 42. The function has no parameters and simply returns a constant value.\\\",\\\"This block is the main function, which is the entry point of the program. It calls the `foo` function and prints the result (42) to the console using `printf`. The function then returns 0 to indicate successful execution.\\\"]\\n\\n" +
+          "Now, here are the blocks to explain:\\n" + numberedBlocks;
+      } else if (selectedLanguage === 'java') {
+        prompt =
+          "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- IMPORTANT: Return EXPLANATIONS, not the code itself. Do not return the code blocks as-is.\\n" +
+          "- If the explanation includes code examples, always wrap them in triple backticks with the language tag (e.g., `java`).\\n" +
+          "- For inline code references, use single backticks (like `variable_name`).\\n" +
+          "- Never output language names (like 'java') on their own line.\\n" +
+          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
+          "- Do not include any formatting that would break Markdown rendering.\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order.\\n" +
+          "- Each explanation should explain what the code does, not repeat the code.\\n" +
+          "- Focus on explaining the purpose, logic, and functionality of each code block.\\n\\n" +
+          "Example input: Block 1: public class HelloWorld {\\n    public static void main(String[] args) {\\n        System.out.println(\\\"Hello, World!\\\");\\n    }\\n    private void greet() {\\n        System.out.println(\\\"Greetings!\\\");\\n    }\\n}\\n" +
+          "Example output: [\\\"This block defines the main method, which is the entry point of the program. It prints 'Hello, World!' to the console.\\\", \\\"This block defines a private method called greet that prints 'Greetings!' to the console.\\\"]\\n\\n" +
+          "Now, here are the blocks to explain: " + numberedBlocks;
+      } else if (selectedLanguage === 'javascript') {
+        prompt =
+          "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- IMPORTANT: Return EXPLANATIONS, not the code itself. Do not return the code blocks as-is.\\n" +
+          "- If the explanation includes code examples, always wrap them in triple backticks with the language tag (e.g., `javascript`).\\n" +
+          "- For inline code references, use single backticks (like `variable_name`).\\n" +
+          "- Never output language names (like 'javascript' or 'js') on their own line.\\n" +
+          "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
+          "- Do not include any formatting that would break Markdown rendering.\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order.\\n" +
+          "- Each explanation should explain what the code does, not repeat the code.\\n" +
+          "- Focus on explaining the purpose, logic, and functionality of each code block.\\n\\n" +
+          "Example input:\\nBlock 1:\\nfunction foo() {\\n    return 42;\\n}\\n\\nBlock 2:\\nconsole.log(foo());\\n\\n" +
+          "Example output:[\\\"This block defines a function called `foo` that returns the number 42. The function has no parameters and simply returns a constant value.\\\",\\\"This block calls the `foo` function and prints its return value (42) to the console using `console.log`.\\\"]\\n\\n" +
+          "Now, here are the blocks to explain:\\n" + numberedBlocks;
       } else {
         prompt =
-          "For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
-          "- If the explanation includes code, always wrap it in triple backticks (`) with the language tag (e.g., `" + selectedLanguage + "`) on the same line.\\n" +
-          "- For inline code, use single backticks ( like this ).\\n" +
+          "You are an expert programming tutor. For each of the following code blocks, write a clear, beginner-friendly, and detailed explanation in valid Markdown format.\\n" +
+          "- IMPORTANT: Return EXPLANATIONS, not the code itself. Do not return the code blocks as-is.\\n" +
+          "- If the explanation includes code examples, always wrap them in triple backticks with the language tag (e.g., `" + selectedLanguage + "`).\\n" +
+          "- For inline code references, use single backticks (like `variable_name`).\\n" +
           "- Never output language names (like 'python' or 'java') on their own line.\\n" +
           "- Never output escape characters (like \\n) as text; use real newlines.\\n" +
           "- Do not include any formatting that would break Markdown rendering.\\n" +
-          "- Return only a JSON array of explanation strings, one for each block, in order. Do not mention block numbers or repeat the code.\\n\\n" +
+          "- Return only a JSON array of explanation strings, one for each block, in order.\\n" +
+          "- Each explanation should explain what the code does, not repeat the code.\\n" +
+          "- Focus on explaining the purpose, logic, and functionality of each code block.\\n\\n" +
           "Example input:\\nBlock 1:\\ndef foo():\\n    return 42\\n\\nBlock 2:\\nprint(foo())\\n\\n" +
-          "Example output:[\\\"This block defines a function called `foo` that returns the number 42.\\n\\n```" + selectedLanguage + "\\ndef foo():\\n    return 42\\n```\\\",\\\"This block prints the result of calling the `foo` function, which is 42.\\n\\n```" + selectedLanguage + "\\nprint(foo())\\n```\\\"]\\n\\n" +
-          "Now, here are the blocks:\\n" + numberedBlocks;
+          "Example output:[\\\"This block defines a function called `foo` that returns the number 42. The function has no parameters and simply returns a constant value.\\\",\\\"This block calls the `foo` function and prints its return value (42) to the console using the `print` function.\\\"]\\n\\n" +
+          "Now, here are the blocks to explain:\\n" + numberedBlocks;
       }
       const body = {
         contents: [
@@ -342,7 +362,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-goog-api-key": GEMINI_API_KEY
+          "X-goog-api-key": GEMINI_API_KEY || ""
         },
         body: JSON.stringify(body)
       });
@@ -350,39 +370,101 @@ export default function Home() {
       const data = await res.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       if (selectedLanguage === 'c') {
-        console.log('Gemini explanation rawText (C):', rawText);
+        // addLog('Gemini explanation rawText (C): ' + rawText); // Removed
       }
       let arr: any[] = [];
       let cleanedText = rawText.trim();
-      // Remove code block markers if present
-      cleanedText = cleanedText.replace(/```json|```/g, '').trim();
-      // Try to parse the first valid JSON array
-      const firstBracket = cleanedText.indexOf('[');
-      const lastBracket = cleanedText.lastIndexOf(']');
-      let parseError = false;
-      if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-        const arrayString = cleanedText.substring(firstBracket, lastBracket + 1);
+      
+      // Handle Gemini responses wrapped in markdown code blocks
+      // Pattern: ```json [ ... ] ```
+      const jsonCodeBlockMatch = cleanedText.match(/```json\s*(\[[\s\S]*?\])\s*```/);
+      if (jsonCodeBlockMatch) {
         try {
-          arr = JSON.parse(arrayString);
+          arr = JSON.parse(jsonCodeBlockMatch[1]);
         } catch (e) {
-          // Fallback: try to split manually if not valid JSON
-          console.warn('[Gemini] Fallback: manual split of array string');
-          arr = arrayString
-            .slice(1, -1) // remove [ and ]
-            .split(/"\s*,\s*"/)
-            .map((s: string) => s.replace(/^"/, '').replace(/"$/, '').replace(/\\n/g, '\n'));
-          // If still not an array, set parseError
-          if (!Array.isArray(arr) || arr.length === 0) parseError = true;
+          // addLog('[Gemini] Failed to parse JSON from code block: ' + e); // Removed
         }
       } else {
-        parseError = true;
+        // Fallback: try to extract JSON array from the text
+        // Remove code block markers if present
+        cleanedText = cleanedText.replace(/```json|```/g, '').trim();
+        // Try to parse the first valid JSON array
+        const firstBracket = cleanedText.indexOf('[');
+        const lastBracket = cleanedText.lastIndexOf(']');
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          const arrayString = cleanedText.substring(firstBracket, lastBracket + 1);
+          try {
+            arr = JSON.parse(arrayString);
+          } catch (e) {
+            // Fallback: try to split manually if not valid JSON
+            // addLog('[Gemini] Fallback: manual split of array string'); // Removed
+            arr = arrayString
+              .slice(1, -1) // remove [ and ]
+              .split(/"\s*,\s*"/)
+              .map((s: string) => s.replace(/^"/, '').replace(/"$/, '').replace(/\\n/g, '\n'));
+          }
+        }
       }
-      console.log('[Gemini] nonEmptyBlocks.length:', nonEmptyBlocks.length, 'arr.length:', Array.isArray(arr) ? arr.length : 'not array');
-      if (parseError || !Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
-        setError("Gemini explanation response (not JSON or block count mismatch):\n" + rawText);
-        setBlockData([]);
+      
+      // addLog(`[Gemini] nonEmptyBlocks.length: ${nonEmptyBlocks.length}, arr.length: ${Array.isArray(arr) ? arr.length : 'not array'}`); // Removed
+      // addLog('[Gemini] Raw response: ' + rawText); // Removed
+      // addLog('[Gemini] Parsed array: ' + JSON.stringify(arr)); // Removed
+      
+      // Check if Gemini returned code blocks instead of explanations
+      if (Array.isArray(arr) && arr.length > 0) {
+        const firstItem = arr[0];
+        if (typeof firstItem === 'string') {
+          // More specific check: look for code that starts with common programming patterns
+          // and doesn't contain explanation-like text
+          const codeStartPatterns = [
+            /^#include/, /^int main/, /^def /, /^function /, /^class /, /^public /, /^private /, /^protected /,
+            /^import /, /^from /, /^console\.log/, /^printf/, /^System\.out/, /^return /, /^if \(/, /^for \(/, /^while \(/,
+            /^const /, /^let /, /^var /, /^std::/, /^using namespace/, /^namespace /, /^package /, /^public class/
+          ];
+          const explanationPatterns = [
+            /this block/, /this code/, /this function/, /this method/, /this class/, /explains/, /defines/, /creates/,
+            /prints/, /returns/, /calculates/, /initializes/, /declares/, /assigns/, /calls/, /executes/
+          ];
+          
+          const startsWithCode = codeStartPatterns.some(pattern => pattern.test(firstItem.trim()));
+          const containsExplanation = explanationPatterns.some(pattern => pattern.test(firstItem.toLowerCase()));
+          
+          // addLog('[Gemini] Detection debug: ' + JSON.stringify({ // Removed
+          //   firstItem: firstItem.substring(0, 100) + '...', // Removed
+          //   startsWithCode, // Removed
+          //   containsExplanation, // Removed
+          //   willTriggerFallback: startsWithCode && !containsExplanation // Removed
+          // })); // Removed
+          
+          // Only trigger fallback if it starts with code AND doesn't contain explanation text
+          if (startsWithCode && !containsExplanation) {
+            // addLog('[Gemini] Detected code blocks instead of explanations, creating fallback'); // Removed
+            const fallbackExplanations = nonEmptyBlocks.map((block, index) => ({
+              start: block.start,
+              end: block.end,
+              text: block.text,
+              explanation: `Block ${index + 1} (lines ${block.start + 1}-${block.end + 1}):\n\nThis code block contains:\n\`\`\`${selectedLanguage}\n${block.text}\n\`\`\`\n\n*Note: AI returned code blocks instead of explanations. This is a basic block overview.*`
+            }));
+            setBlockData(fallbackExplanations);
+            setLineToBlockIndex(lineToBlockIndex);
+            setAILoading(false);
+            return;
+          }
+        }
+      }
+      
+      if (!Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
+        // Fallback: create basic explanations if parsing fails
+        // addLog('[Gemini] Creating fallback explanations due to parsing error'); // Removed
+        const fallbackExplanations = nonEmptyBlocks.map((block, index) => ({
+          start: block.start,
+          end: block.end,
+          text: block.text,
+          explanation: `Block ${index + 1} (lines ${block.start + 1}-${block.end + 1}):\n\nThis code block contains:\n\`\`\`${selectedLanguage}\n${block.text}\n\`\`\`\n\n*Note: AI explanation parsing failed. This is a basic block overview.*`
+        }));
+        setBlockData(fallbackExplanations);
+        setLineToBlockIndex(lineToBlockIndex);
         setAILoading(false);
-        localStorage.removeItem('codeInput');
         return;
       }
       // Map explanations to blocks by array index
@@ -431,46 +513,55 @@ export default function Home() {
       setBlockData(mapped);
       setLineToBlockIndex(lineToBlockIndex);
     } catch (e: any) {
-      setError(e.message || "Unknown error while contacting Gemini API.");
+      setError('An error occurred. Please try again later.');
       setBlockData([]);
     }
     setAILoading(false);
   };
 
+  // function addLog(msg: string) { // Removed
+  //   setDebugLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]); // Removed
+  // } // Removed
+
+  const [blockSplitWarning, setBlockSplitWarning] = useState<string | null>(null);
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-100 to-gray-300 dark:from-gray-900 dark:to-gray-950">
       {/* Header */}
-      <header className="w-full px-6 py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer</code>
+      <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
+        <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base sm:text-lg md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer</code>
         </h1>
       </header>
       {/* Main content */}
-      <main className="flex-1 flex flex-col items-center justify-center w-full px-2 py-6">
+      <main className="flex-1 flex flex-col items-center justify-center w-full px-1 sm:px-2 py-4 sm:py-6">
         {/* Error display */}
         {error && (
-          <div className="mb-4 p-3 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 font-semibold text-sm max-w-2xl w-full text-center">
+          <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-red-100 via-yellow-100 to-red-100 dark:from-red-900 dark:via-yellow-900 dark:to-red-900 text-red-900 dark:text-yellow-100 border-2 border-red-300 dark:border-red-700 font-bold text-base shadow-lg max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
             {error}
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-300">See Debug Log for more details.</div>
           </div>
         )}
-        {/* Restore original conditional rendering for main content:
-            Only show the visualizer/explanation panels if blockData (with explanations) is available and valid for navigation/highlighting.
-            Otherwise, always show the code input page. */}
-        {!(blockData.length > 0 && validHighlightRange && !error) ? (
-          <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
-            <div className="flex items-center justify-between text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+        {blockSplitWarning && (
+          <div className="mb-4 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
+            {blockSplitWarning}
+          </div>
+        )}
+        {!(blockData.length > 0 && validHighlightRange) ? (
+          <div className="w-full max-w-lg sm:max-w-xl md:max-w-2xl mx-auto flex flex-col gap-4 sm:gap-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 gap-2 sm:gap-0">
               <span>Code Input</span>
               <select
-                className="ml-4 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-base"
+                className="ml-0 sm:ml-4 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 value={selectedLanguage}
                 onChange={e => {
                   const newLang = e.target.value;
-                  // Only replace code if it matches the default for the previous language
                   if (text === DEFAULT_CODE_SAMPLES[selectedLanguage]) {
                     setText(DEFAULT_CODE_SAMPLES[newLang] || '');
                   }
                   setSelectedLanguage(newLang);
                 }}
+                aria-label="Select programming language"
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -478,7 +569,7 @@ export default function Home() {
               </select>
             </div>
             {showLangWarning && (
-              <div className="mb-2 p-3 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 font-semibold text-sm">
+              <div className="mb-2 p-3 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700 font-semibold text-sm" role="alert" aria-live="polite">
                 The code you entered appears to be in a different language than the selected option. Please select the correct language or update your code.
               </div>
             )}
@@ -490,7 +581,7 @@ export default function Home() {
               readOnly={false}
             />
             {blockData.length > 0 && (
-              <div className="mb-2 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm mt-2">
+              <div className="mb-2 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm mt-2" role="alert" aria-live="polite">
                 No valid blocks to highlight. Please check your code or try again.
               </div>
             )}
@@ -499,8 +590,8 @@ export default function Home() {
           <>
             <div className="flex w-full items-center mb-2 md:mb-4 mt-[-1.5rem]">
               <button
-                className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition text-xl text-gray-500 dark:text-gray-300 mr-2"
-                aria-label="Back to Edit"
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition text-xl text-gray-500 dark:text-gray-300 mr-2"
+                aria-label="Back to code input"
                 onClick={() => { setBlockData([]); setError(null); }}
                 tabIndex={0}
               >
@@ -510,9 +601,8 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            <div className="w-screen max-w-none h-[80vh] md:h-[80vh] flex flex-col md:flex-row gap-8 transition-all duration-300">
-              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full md:w-[70vw]">
-                {/* When passing blockData={arr} to CustomCodeVisualizer, ensure every block has explanation: string */}
+            <div className="w-full flex flex-col lg:flex-row gap-4 md:gap-8 transition-all duration-300 max-w-full">
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0">
                 <CustomCodeVisualizer
                   code={text}
                   blockData={validBlocks}
@@ -525,10 +615,8 @@ export default function Home() {
                   themeIdx={themeIdx}
                 />
               </div>
-              {/* Visual separator for desktop */}
-              <div className="hidden md:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" />
-              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full md:w-[30vw] mt-4 md:mt-0">
-                {/* Instead of passing className directly to ExplanationPanel, wrap it in a div with the desired classes */}
+              <div className="hidden lg:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" aria-hidden="true" />
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0">
                 <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full">
                   <ExplanationPanel
                     aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
@@ -541,9 +629,10 @@ export default function Home() {
         )}
       </main>
       {/* Footer */}
-      <footer className="w-full py-4 text-center text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800">
+      <footer className="w-full py-3 sm:py-4 text-center text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800">
         &copy; {new Date().getFullYear()} Interactive code explainer.
       </footer>
+      {/* Removed Debug Log panel and all related state, logic, and UI from the page. */}
     </div>
   );
 }

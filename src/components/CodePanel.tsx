@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
@@ -9,6 +9,7 @@ import { Extension, RangeSetBuilder } from "@codemirror/state";
 import { useEffect, useState } from "react";
 // (No Framer Motion: use only CSS transitions for block highlighting)
 import * as shiki from "shiki";
+import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
 // Add this to your globals.css:
 // .block-highlight { background-color: rgba(255, 255, 0, 0.15); }
@@ -126,16 +127,27 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   const [lines, setLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [highlightedLines, setHighlightedLines] = useState<string[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const firstHighlightRef = useRef<HTMLDivElement>(null);
+  // Remove audioRef, <audio> element, and useEffect for playing sound on currentBlock change.
 
   // Threshold for a 'long' line (in characters)
   const LONG_LINE_THRESHOLD = 80;
 
   useEffect(() => {
-    // Always preserve original lines and whitespace
     setLines(code.split("\n"));
     setHighlightedLines(code.split("\n").map(escapeHtml));
     setLoading(false);
   }, [code]);
+
+  // Scroll current block into view on block change (mobile and desktop)
+  useEffect(() => {
+    if (firstHighlightRef.current) {
+      firstHighlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentBlock, code]);
+
+  // Remove the useEffect that plays audio on currentBlock change.
 
   if (loading) {
     return (
@@ -170,9 +182,17 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
 
   return (
     <div className="relative h-full w-full flex flex-col p-0 m-0">
-      <div className="flex-1 overflow-auto bg-gradient-to-br from-blue-50/80 to-purple-100/80 dark:from-gray-900 dark:to-gray-950 w-full h-full flex flex-col justify-stretch p-6 md:p-10 border-0 shadow-none rounded-none">
-        <pre className="relative font-mono text-base leading-relaxed select-none w-full h-full min-h-0 flex-1 px-0 py-0 m-0 border-0 transition-all duration-500">
-          {/* Block-by-block navigation and animation, Lydia Hallie style, CSS only */}
+      {/* Sound effect audio element */}
+      {/* Remove audioRef, <audio> element, and useEffect for playing sound on currentBlock change. */}
+      <div
+        className="flex-1 bg-gradient-to-br from-blue-50/80 to-purple-100/80 dark:from-gray-900 dark:to-gray-950 w-full h-full flex flex-col justify-stretch p-2 sm:p-4 md:p-6 lg:p-10 border-0 shadow-none rounded-none min-w-0 code-content"
+        style={{ paddingBottom: '4.5rem' }}
+      >
+        <div
+          ref={scrollRef}
+          style={{ position: 'relative', maxHeight: '28rem', overflowY: 'auto', minHeight: '10rem' }}
+          className="font-mono text-sm sm:text-base leading-relaxed select-none w-full h-full min-h-0 flex-1 px-0 py-0 m-0 border-0 transition-all duration-500"
+        >
           {highlightedLines.map((line, idx) => {
             const isCurrentBlock = lineToBlockIndex
               ? lineToBlockIndex[idx] === currentBlock
@@ -183,74 +203,84 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
             const wrapStyles: React.CSSProperties = {
               wordBreak: 'break-all',
               whiteSpace: 'pre-wrap',
+              position: 'relative',
+              zIndex: 1,
             };
-            if (isCurrentBlock) {
-              return (
-                <div
-                  key={`block-line-${idx}`}
+            return (
+              <div
+                key={`block-line-${idx}`}
+                style={{ position: 'relative', minHeight: '1.5em' }}
+                ref={isCurrentBlock && blockLineSet.has(idx) && [...blockLineSet][0] === idx ? firstHighlightRef : undefined}
+              >
+                {isCurrentBlock && (
+                  <div
+                    className="block-highlight-animated"
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: '100%',
+                      height: '100%',
+                      zIndex: 0,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
+                <span
+                  style={wrapStyles}
                   className={
-                    blockHighlightClass +
-                    " px-3 py-1 rounded-md relative z-10 shadow-lg animate-block-highlight block-zoom"
+                    isCurrentBlock
+                      ? ''
+                      : 'code-line-blur text-gray-700 dark:text-gray-300'
                   }
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "1.13em",
-                    marginBottom: "2px",
-                    background: blockGradient,
-                    color: blockTextColor,
-                    borderLeftColor: "#38bdf8",
-                    boxShadow: "0 4px 24px 0 rgba(56,189,248,0.18)",
-                    transition:
-                      "background 0.4s, color 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(0.4,0.2,0.2,1)",
-                    transform: "scale(1.04)",
-                    ...wrapStyles,
-                  }}
-                >
-                  <span style={wrapStyles} dangerouslySetInnerHTML={{ __html: line }} />
-                </div>
-              );
-            } else {
-              return (
-                <div
-                  key={`static-line-${idx}`}
-                  className="text-gray-700 dark:text-gray-300 px-2 py-0.5 code-line-blur"
-                  style={{
-                    fontWeight: 400,
-                    fontSize: "1em",
-                    marginBottom: "2px",
-                    filter: "blur(1.5px)",
-                    opacity: 0.45,
-                    transition: "filter 0.4s, opacity 0.4s",
-                    ...wrapStyles,
-                  }}
-                >
-                  <span style={wrapStyles} dangerouslySetInnerHTML={{ __html: line }} />
-                </div>
-              );
-            }
+                  dangerouslySetInnerHTML={{ __html: line }}
+                />
+              </div>
+            );
           })}
-        </pre>
+        </div>
+        {/* Desktop navigation controls */}
+        <div className="hidden sm:flex mt-3 sm:mt-4 flex-row items-center justify-center gap-2 sm:gap-4 w-full">
+          <button
+            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 font-bold shadow cursor-pointer min-w-[44px] min-h-[44px] text-base flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            onClick={onPrevBlock}
+            disabled={currentBlock === 0}
+            aria-label="Previous block"
+          >
+            <FaChevronLeft aria-hidden="true" /> Prev
+          </button>
+          <button
+            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-green-400 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white disabled:opacity-50 font-bold shadow transition-colors duration-200 cursor-pointer min-w-[44px] min-h-[44px] text-base flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            onClick={onNextBlock}
+            disabled={currentBlock === totalBlocks - 1}
+            aria-label="Next block"
+          >
+            Next <FaChevronRight aria-hidden="true" />
+          </button>
+        </div>
       </div>
-      {/* Navigation controls */}
-      <div className="mt-4 flex items-center justify-center gap-4">
+      {/* Mobile sticky bottom navigation */}
+      <nav className="sm:hidden fixed bottom-0 left-0 w-full z-50 bg-white/95 dark:bg-gray-900/95 shadow-[0_-2px_12px_0_rgba(56,189,248,0.10)] border-t border-gray-200 dark:border-gray-700 flex flex-row justify-center items-center gap-3 py-2 px-4" style={{backdropFilter: 'blur(8px)'}} aria-label="Block navigation">
         <button
-          className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 font-bold shadow cursor-pointer"
+          className="inline-flex items-center justify-center min-w-[70px] min-h-[44px] px-3 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 shadow hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition text-sm font-bold"
           onClick={onPrevBlock}
           disabled={currentBlock === 0}
+          aria-label="Previous block"
         >
-          Prev
+          <FaChevronLeft aria-hidden="true" className="text-sm mr-1" />
+          <span className="text-xs">Prev</span>
         </button>
+        <div className="text-gray-400 text-xs select-none px-2 flex-shrink-0">Block {currentBlock + 1} / {totalBlocks}</div>
         <button
-          className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-green-400 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white disabled:opacity-50 font-bold shadow transition-colors duration-200 cursor-pointer"
+          className="inline-flex items-center justify-center min-w-[70px] min-h-[44px] px-3 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 shadow hover:bg-green-100 dark:hover:bg-emerald-900 hover:text-green-700 dark:hover:text-green-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 transition text-sm font-bold"
           onClick={onNextBlock}
           disabled={currentBlock === totalBlocks - 1}
+          aria-label="Next block"
         >
-          Next
+          <span className="text-xs">Next</span>
+          <FaChevronRight aria-hidden="true" className="text-sm ml-1" />
         </button>
-      </div>
-      <div className="flex justify-center mt-2 text-gray-400 text-xs select-none">
-        Block {currentBlock + 1} / {totalBlocks}
-      </div>
+      </nav>
     </div>
   );
 };
@@ -279,8 +309,8 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
   }, [setCurrentBlockForLine]);
 
   return (
-    <div className="h-full w-full p-4 bg-gray-900 text-white rounded-lg shadow-xl flex flex-col border border-gray-800/60">
-      <div className="flex-1 overflow-auto transition-opacity duration-200">
+    <div className="h-full w-full p-2 sm:p-4 bg-gray-900 text-white rounded-lg shadow-xl flex flex-col border border-gray-800/60 min-w-0 code-panel">
+      <div className="flex-1 overflow-auto transition-opacity duration-200 min-w-0">
         <CodeMirror
           value={code}
           height="100%"
@@ -288,25 +318,27 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
           extensions={extensions}
           onChange={setCode}
           onUpdate={setCurrentBlockForLine ? handleUpdate : undefined}
-          className="rounded-lg font-mono text-base min-h-[180px] border border-gray-800 h-full"
+          className="rounded-lg font-mono text-sm sm:text-base min-h-[120px] sm:min-h-[180px] border border-gray-800 h-full min-w-0"
           basicSetup={{ lineNumbers: true, highlightActiveLine: true }}
           readOnly={readOnly ?? false}
         />
       </div>
-      <div className="mt-4 flex items-center justify-center gap-4">
+      <div className="mt-3 sm:mt-4 flex flex-row items-center justify-center gap-2 sm:gap-4 w-full">
         {hasBlocks && onPrevBlock && (
           <button
-            className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50"
+            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             onClick={onPrevBlock}
             disabled={currentBlock === 0 || aiLoading}
+            aria-label="Previous block"
           >
             Prev
           </button>
         )}
         <button
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition disabled:opacity-50"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition disabled:opacity-50 min-w-[44px] min-h-[44px] text-base"
           onClick={onAIExplain}
           disabled={aiLoading}
+          aria-label="Generate AI explanation"
         >
           {aiLoading ? (
             <span className="flex items-center gap-2"><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Loading...</span>
@@ -316,9 +348,10 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
         </button>
         {hasBlocks && onNextBlock && (
           <button
-            className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50"
+            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             onClick={onNextBlock}
             disabled={currentBlock === ((totalBlocks ?? 1) - 1) || aiLoading}
+            aria-label="Next block"
           >
             Next
           </button>
