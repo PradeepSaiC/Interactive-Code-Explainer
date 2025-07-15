@@ -3,7 +3,6 @@ import CodeMirror from "@uiw/react-codemirror";
 import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Decoration } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
 
 import { useEffect, useState } from "react";

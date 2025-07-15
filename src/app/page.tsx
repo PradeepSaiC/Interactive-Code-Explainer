@@ -79,7 +79,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   const mappedBlocks = [];
   const lineToBlockIndex = Array(codeLines.length).fill(-1);
 
-  for (const [blockIdx, blockText] of geminiBlocks.entries()) {
+  for (const [, blockText] of geminiBlocks.entries()) {
     // Normalize block text for matching
     const blockLines = blockText.split('\n').map(l => l.trimEnd());
     let found = false;
@@ -230,16 +230,6 @@ export default function Home() {
       setCurrentBlock(0);
     }
   }, [validBlocks.length, blocks.length]);
-
-  // Set current block based on a line number (from CodePanel)
-  const setCurrentBlockForLine = useCallback(
-    (line: number) => {
-      const arr = blockData.length > 0 ? blockData : blocks;
-      const idx = arr.findIndex((b) => line >= b.start && line <= b.end);
-      if (idx !== -1 && idx !== currentBlock) setCurrentBlock(idx);
-    },
-    [blockData, blocks, currentBlock]
-  );
 
   // Theme index for Lydia Hallie-style color variants
   const [themeIdx, setThemeIdx] = useState<number>(() => Math.floor(Math.random() * 20));
@@ -458,32 +448,6 @@ export default function Home() {
       }
       // Map explanations to blocks by array index
       // Improved: robustly wrap code in Markdown code blocks
-      function ensureMarkdownBlocks(str: string, lang: string) {
-        // If triple backticks are present, assume it's already formatted
-        if (/```/.test(str)) return str.replace(/\\n/g, '\n');
-        // Try to detect code lines (heuristic: indented or look like code)
-        const lines = str.split('\n');
-        let inCode = false;
-        let result = [];
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          // Filter out lines that are just language names
-          if (/^(python|c|cpp|java|javascript|c\+\+)$/i.test(line.trim())) continue;
-          // Heuristic: line is code if indented or looks like code
-          const isCode = /^\s{2,}|^\t|^def |^class |^function |^#include|^public |^int |^print\(|^console\.log|^std::|^System\.|^\w+\(.*\)/.test(line);
-          if (isCode && !inCode) {
-            result.push('```' + lang);
-            inCode = true;
-          }
-          if (!isCode && inCode) {
-            result.push('```');
-            inCode = false;
-          }
-          result.push(line);
-        }
-        if (inCode) result.push('```');
-        return result.join('\n').replace(/\\n/g, '\n');
-      }
       const explanations: string[] = arr.map((item) => {
         if (typeof item === 'string') return item;
         if (item && typeof item === 'object') {

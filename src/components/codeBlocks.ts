@@ -1,5 +1,4 @@
 // Add this at the very top of the file to suppress missing type declaration error
-// @ts-ignore
 import 'tree-sitter-typescript/typescript';
 // Tree-sitter-based block extraction for Python
 import Parser from 'web-tree-sitter';
@@ -28,7 +27,7 @@ const LANG_GRAMMARS: Record<string, any> = {
 };
 
 // Use 'let' for parser and loadedLanguages if reassigned
-const parser: unknown = null;
+let parser: any = null;
 const loadedLanguages: Record<string, unknown> = {};
 
 function getBlockNodeTypes(language: string): string[] {
@@ -61,19 +60,16 @@ export async function extractBlocks(code: string, language: string) {
     // Fallback: paragraph splitter
     return fallbackParagraphBlocks(code);
   }
-  if (!parser) {
-    // @ts-ignore
-    await Parser.init();
-    // @ts-ignore
-    parser = new Parser();
-  }
+  const Parser = (await import('web-tree-sitter')).default;
+  // @ts-expect-error: web-tree-sitter types do not include init()
+  await Parser.init();
+  // @ts-expect-error: web-tree-sitter types do not include constructor
+  parser = new Parser();
   if (!loadedLanguages[language]) {
     loadedLanguages[language] = await Parser.Language.load(LANG_GRAMMARS[language]);
   }
-  // @ts-ignore
-  (parser as any).setLanguage(loadedLanguages[language]);
-  // When calling parser.parse, cast parser to any:
-  const tree = (parser as any).parse(code);
+  await parser.setLanguage(loadedLanguages[language]);
+  const tree = parser.parse(code);
   const blockTypes = getBlockNodeTypes(language);
   const blocks: { start: number; end: number; code: string }[] = [];
   function addBlock(node: any) {
