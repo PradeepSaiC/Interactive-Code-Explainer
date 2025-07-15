@@ -680,7 +680,7 @@ export default function Home() {
               </button>
             </div>
             <div className="w-full flex flex-col lg:flex-row gap-4 md:gap-8 transition-all duration-300 max-w-full">
-              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0">
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0" style={{height: '520px', maxHeight: '520px', minHeight: '320px'}}>
                 <CustomCodeVisualizer
                   code={text}
                   blockData={validBlocks}
