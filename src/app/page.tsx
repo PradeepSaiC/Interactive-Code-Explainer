@@ -96,14 +96,19 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   let searchStart = 0;
 
   for (const blockText of geminiBlocks) {
-    // Try exact block match (all whitespace preserved)
-    const blockLineCount = blockText.split('\n').length;
+    // Try exact block match (including empty lines and all whitespace)
+    const blockLines = blockText.split('\n');
+    const blockLineCount = blockLines.length;
     let found = false;
     for (let i = searchStart; i <= codeLines.length - blockLineCount; i++) {
-      const candidate = codeLines.slice(i, i + blockLineCount).join('\n');
-      if (candidate === blockText && codeLines.slice(i, i + blockLineCount).every((_, idx) => !used[i + idx])) {
+      const candidate = codeLines.slice(i, i + blockLineCount);
+      if (
+        candidate.length === blockLines.length &&
+        candidate.every((line, idx) => line === blockLines[idx]) &&
+        candidate.every((_, idx) => !used[i + idx])
+      ) {
         mappedBlocks.push({
-          text: candidate,
+          text: candidate.join('\n'),
           start: i,
           end: i + blockLineCount - 1,
         });
@@ -117,11 +122,13 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       }
     }
     if (!found) {
-      // Fallback: fuzzy line-by-line matching (trimmed)
+      // Fallback: fuzzy line-by-line matching (trimmed, but preserve empty lines)
       let start = -1, end = -1, blockLineIdx = 0;
-      const blockLines = blockText.split('\n').map(l => l.trim());
       for (let i = 0; i < codeLines.length && blockLineIdx < blockLines.length; i++) {
-        if (!used[i] && codeLines[i].trim() === blockLines[blockLineIdx]) {
+        if (
+          !used[i] &&
+          (codeLines[i] === blockLines[blockLineIdx] || codeLines[i].trim() === blockLines[blockLineIdx].trim())
+        ) {
           if (start === -1) start = i;
           end = i;
           used[i] = true;
@@ -527,6 +534,7 @@ export default function Home() {
       <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
         <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
           <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base sm:text-lg md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer</code>
+          <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{letterSpacing: '0.05em'}}>Beta</span>
         </h1>
       </header>
       {/* Main content */}
