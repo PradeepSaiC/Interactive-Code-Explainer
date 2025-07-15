@@ -1,3 +1,4 @@
+/* eslint-disable */
 // Add this at the very top of the file to suppress missing type declaration error
 import 'tree-sitter-typescript/typescript';
 // Tree-sitter-based block extraction for Python

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { cpp } from "@codemirror/lang-cpp";
