@@ -106,8 +106,6 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   lineToBlockIndex,
   themeIdx,
 }) => {
-  const [lines, setLines] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const [highlightedLines, setHighlightedLines] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const firstHighlightRef = useRef<HTMLDivElement>(null);
@@ -117,9 +115,7 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   const LONG_LINE_THRESHOLD = 80;
 
   useEffect(() => {
-    setLines(code.split("\n"));
     setHighlightedLines(code.split("\n").map(escapeHtml));
-    setLoading(false);
   }, [code]);
 
   // Scroll current block into view on block change (mobile and desktop)
@@ -131,11 +127,6 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
 
   // Remove the useEffect that plays audio on currentBlock change.
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-lg animate-pulse text-blue-500">Loading code visualization...</div>
-    );
-  }
   // Use lineToBlockIndex if provided, else fallback to blockData's start/end
   let blockLineSet: Set<number>;
   if (lineToBlockIndex) {
