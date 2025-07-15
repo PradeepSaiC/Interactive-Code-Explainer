@@ -31,8 +31,8 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const mainPrompt = `Split the code below into logical blocks (functions, classes, or related statements). Each block must be contiguous lines. Preserve all whitespace and empty lines. Return only a JSON array of code blocks as strings, in order. Do not add or remove anything.`;
-  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible units (statements or lines). Return only a JSON array of code blocks as strings, in order. Do not add or remove anything.`;
+  const mainPrompt = `Split the code below into logical blocks (functions, classes, or related statements). Each block must be a contiguous set of lines from the original code. Preserve all whitespace and empty lines. Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
+  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible units (statements or lines). Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
 
   async function getBlocks(prompt: string) {
     const body = {
@@ -88,6 +88,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   const mappedBlocks = [];
   const lineToBlockIndex = Array(codeLines.length).fill(-1);
   let searchStart = 0;
+  let lastNonEmptyBlockIdx = -1;
 
   for (const blockText of geminiBlocks) {
     const blockLines = blockText.split('\n');
@@ -113,6 +114,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
         }
         searchStart = i + blockLineCount;
         found = true;
+        if (candidate.some(line => line.trim() !== '')) lastNonEmptyBlockIdx = mappedBlocks.length - 1;
         break;
       }
     }
@@ -137,6 +139,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           }
           searchStart = i + blockLineCount;
           found = true;
+          if (candidate.some(line => line.trim() !== '')) lastNonEmptyBlockIdx = mappedBlocks.length - 1;
           break;
         }
       }
@@ -186,13 +189,14 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
             });
             found = true;
             searchStart = end + 1;
+            if (codeLines.slice(start, end + 1).some(line => line.trim() !== '')) lastNonEmptyBlockIdx = mappedBlocks.length - 1;
             break;
           }
         }
       }
     }
 
-    // 4. If block is only empty lines, map to next available empty lines
+    // 4. If block is only empty lines, map to previous non-empty block (or next available empty lines if at start)
     if (!found && blockLines.every(l => l.trim() === '')) {
       let start = -1, end = -1, count = 0;
       for (let i = searchStart; i < codeLines.length && count < blockLines.length; i++) {
@@ -200,16 +204,12 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           if (start === -1) start = i;
           end = i;
           used[i] = true;
-          lineToBlockIndex[i] = mappedBlocks.length;
+          lineToBlockIndex[i] = lastNonEmptyBlockIdx >= 0 ? lastNonEmptyBlockIdx : mappedBlocks.length;
           count++;
         }
       }
       if (start !== -1 && end !== -1) {
-        mappedBlocks.push({
-          text: codeLines.slice(start, end + 1).join('\n'),
-          start,
-          end,
-        });
+        // Do not create a separate block for only empty lines, just assign them to the previous non-empty block
         found = true;
         searchStart = end + 1;
       }
@@ -231,6 +231,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           start: unmatched[0],
           end: unmatched[unmatched.length - 1],
         });
+        if (unmatched.some(i => codeLines[i].trim() !== '')) lastNonEmptyBlockIdx = mappedBlocks.length - 1;
       }
     }
   }
@@ -238,6 +239,12 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   // Add any remaining unmatched lines as their own blocks
   for (let i = 0; i < codeLines.length; i++) {
     if (!used[i]) {
+      // Assign stray empty lines to previous non-empty block if possible
+      if (codeLines[i].trim() === '' && lastNonEmptyBlockIdx >= 0) {
+        lineToBlockIndex[i] = lastNonEmptyBlockIdx;
+        used[i] = true;
+        continue;
+      }
       mappedBlocks.push({
         text: codeLines[i],
         start: i,
@@ -245,6 +252,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       });
       lineToBlockIndex[i] = mappedBlocks.length - 1;
       used[i] = true;
+      if (codeLines[i].trim() !== '') lastNonEmptyBlockIdx = mappedBlocks.length - 1;
     }
   }
   mappedBlocks.sort((a, b) => a.start - b.start);
