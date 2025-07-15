@@ -31,7 +31,7 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const prompt = `Divide the following code into logical blocks for explanation. Return a JSON array of code blocks, in order. Each block must be a substring of the original code, with lines and whitespace preserved exactly as in the input. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const prompt = `Divide the following code into explainable blocks for accurate mapping. Each block should correspond to a logical unit (function, class, or related lines) and must be a contiguous set of lines from the original code. Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
   const body = {
     contents: [
       {
@@ -78,40 +78,33 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   const used = Array(codeLines.length).fill(false);
   const mappedBlocks = [];
   const lineToBlockIndex = Array(codeLines.length).fill(-1);
-
   let searchStart = 0;
-  for (const blockText of geminiBlocks) {
-    const blockLines = blockText.split('\n').map(l => l.trim());
-    let found = false;
 
-    // Try to find a contiguous match in the original code
-    for (let i = searchStart; i <= codeLines.length - blockLines.length; i++) {
-      let match = true;
-      for (let j = 0; j < blockLines.length; j++) {
-        if (codeLines[i + j].trim() !== blockLines[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
+  for (const blockText of geminiBlocks) {
+    // Try exact block match (all whitespace preserved)
+    const blockLineCount = blockText.split('\n').length;
+    let found = false;
+    for (let i = searchStart; i <= codeLines.length - blockLineCount; i++) {
+      const candidate = codeLines.slice(i, i + blockLineCount).join('\n');
+      if (candidate === blockText && codeLines.slice(i, i + blockLineCount).every((_, idx) => !used[i + idx])) {
         mappedBlocks.push({
-          text: codeLines.slice(i, i + blockLines.length).join('\n'),
+          text: candidate,
           start: i,
-          end: i + blockLines.length - 1,
+          end: i + blockLineCount - 1,
         });
-        for (let k = i; k < i + blockLines.length; k++) {
+        for (let k = i; k < i + blockLineCount; k++) {
           used[k] = true;
           lineToBlockIndex[k] = mappedBlocks.length - 1;
         }
-        searchStart = i + blockLines.length;
+        searchStart = i + blockLineCount;
         found = true;
         break;
       }
     }
-
-    // Fallback: assign each block line to the next available unmatched line
     if (!found) {
+      // Fallback: fuzzy line-by-line matching (trimmed)
       let start = -1, end = -1, blockLineIdx = 0;
+      const blockLines = blockText.split('\n').map(l => l.trim());
       for (let i = 0; i < codeLines.length && blockLineIdx < blockLines.length; i++) {
         if (!used[i] && codeLines[i].trim() === blockLines[blockLineIdx]) {
           if (start === -1) start = i;
@@ -128,7 +121,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           end,
         });
       } else {
-        // If still not found, assign the next unmatched line(s) to this block
+        // Last fallback: assign next unmatched lines
         const unmatched = [];
         for (let i = 0; i < codeLines.length && unmatched.length < blockLines.length; i++) {
           if (!used[i]) {
@@ -147,7 +140,6 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       }
     }
   }
-
   // Add any remaining unmatched lines as their own blocks
   for (let i = 0; i < codeLines.length; i++) {
     if (!used[i]) {
@@ -160,7 +152,6 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       used[i] = true;
     }
   }
-
   mappedBlocks.sort((a, b) => a.start - b.start);
   return { mappedBlocks, lineToBlockIndex };
 }
