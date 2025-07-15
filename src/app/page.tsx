@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import CodePanel from "../components/CodePanel";
 import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
-import { extractBlocks } from "../components/codeBlocks";
 
 // Remove the extractBlocksFromText and async effect at the top
 
