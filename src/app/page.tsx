@@ -23,15 +23,6 @@ const LANGUAGE_OPTIONS = [
   { value: "cpp", label: "C++" },
 ];
 
-function detectLanguage(code: string): string {
-  if (/^\s*def |^\s*class |import |print\(/m.test(code)) return "python";
-  if (/^\s*function |console\.log|let |const |var |=>|document\.|window\.|^\/\/|^\s*\/\*/m.test(code)) return "javascript";
-  if (/^\s*#include|int main\s*\(|\bprintf\b|\bscanf\b|\breturn\b|\bvoid\b|\bchar\b|\bint\b|\bfloat\b|\bdouble\b/m.test(code)) return "c";
-  if (/^\s*public |System\.out|class |static void main|^\/\//m.test(code)) return "java";
-  if (/^#include <iostream>|std::cout|std::endl|using namespace std|^\/\//m.test(code)) return "cpp";
-  return "plaintext";
-}
-
 // Remove all Tree-sitter and paragraph splitting logic from the frontend
 // Use Gemini for both block splitting and explanation
 

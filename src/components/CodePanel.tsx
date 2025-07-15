@@ -102,7 +102,6 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   onPrevBlock,
   onNextBlock,
   totalBlocks,
-  language,
   lineToBlockIndex,
   themeIdx,
 }) => {
