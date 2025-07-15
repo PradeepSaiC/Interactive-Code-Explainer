@@ -31,7 +31,7 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const mainPrompt = `Split the code below into logical blocks (functions, classes, or related statements). Each block must be a contiguous set of lines from the original code. Preserve all whitespace and empty lines. Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
+  const mainPrompt = `Split the code below into as many small, logical blocks as possible (functions, classes, or related statements). For large code, do not group unrelated code together. Each block must be a contiguous set of lines from the original code. Preserve all whitespace and empty lines. Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
   const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible units (statements or lines). Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
 
   async function getBlocks(prompt: string) {
@@ -712,7 +712,7 @@ export default function Home() {
               </div>
               <div className="hidden lg:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" aria-hidden="true" />
               <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0">
-                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full">
+                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
                   <ExplanationPanel
                     aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
                     aiLoading={aiLoading}
