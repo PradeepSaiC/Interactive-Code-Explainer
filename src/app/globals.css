@@ -89,6 +89,20 @@ body {
   animation: fade-in 0.3s ease-out;
 }
 
+/* Loader overlay styles */
+@keyframes fade-in-loader {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in-loader 0.4s ease;
+}
+
+/* Spinner color for dark mode */
+.dark .text-blue-500 {
+  color: #60a5fa !important;
+}
+
 @media (max-width: 640px) {
   .block-highlight,
   .block-highlight-fallback,

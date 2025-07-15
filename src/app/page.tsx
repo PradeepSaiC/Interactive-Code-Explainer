@@ -76,18 +76,19 @@ const splitBlocksWithGemini = async (code: string, language: string) => {
 function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) {
   const codeLines = originalCode.split('\n');
   const used = Array(codeLines.length).fill(false);
-  let lastIdx = 0;
   const mappedBlocks = [];
   const lineToBlockIndex = Array(codeLines.length).fill(-1);
 
-  for (const [, blockText] of geminiBlocks.entries()) {
-    // Normalize block text for matching
-    const blockLines = blockText.split('\n').map(l => l.trimEnd());
+  let searchStart = 0;
+  for (const blockText of geminiBlocks) {
+    const blockLines = blockText.split('\n').map(l => l.trim());
     let found = false;
-    for (let i = lastIdx; i <= codeLines.length - blockLines.length; i++) {
+
+    // Try to find a contiguous match in the original code
+    for (let i = searchStart; i <= codeLines.length - blockLines.length; i++) {
       let match = true;
       for (let j = 0; j < blockLines.length; j++) {
-        if (codeLines[i + j].trimEnd() !== blockLines[j]) {
+        if (codeLines[i + j].trim() !== blockLines[j]) {
           match = false;
           break;
         }
@@ -102,18 +103,17 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           used[k] = true;
           lineToBlockIndex[k] = mappedBlocks.length - 1;
         }
-        lastIdx = i + blockLines.length;
+        searchStart = i + blockLines.length;
         found = true;
         break;
       }
     }
+
+    // Fallback: assign each block line to the next available unmatched line
     if (!found) {
-      // If not found, try to assign each block line individually to unmatched lines in order
-      let start = -1;
-      let end = -1;
-      let blockLineIdx = 0;
+      let start = -1, end = -1, blockLineIdx = 0;
       for (let i = 0; i < codeLines.length && blockLineIdx < blockLines.length; i++) {
-        if (!used[i] && codeLines[i].trimEnd() === blockLines[blockLineIdx]) {
+        if (!used[i] && codeLines[i].trim() === blockLines[blockLineIdx]) {
           if (start === -1) start = i;
           end = i;
           used[i] = true;
@@ -127,10 +127,28 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
           start,
           end,
         });
+      } else {
+        // If still not found, assign the next unmatched line(s) to this block
+        const unmatched = [];
+        for (let i = 0; i < codeLines.length && unmatched.length < blockLines.length; i++) {
+          if (!used[i]) {
+            unmatched.push(i);
+            used[i] = true;
+            lineToBlockIndex[i] = mappedBlocks.length;
+          }
+        }
+        if (unmatched.length) {
+          mappedBlocks.push({
+            text: unmatched.map(i => codeLines[i]).join('\n'),
+            start: unmatched[0],
+            end: unmatched[unmatched.length - 1],
+          });
+        }
       }
     }
   }
-  // Add any remaining unmatched lines as their own blocks in order
+
+  // Add any remaining unmatched lines as their own blocks
   for (let i = 0; i < codeLines.length; i++) {
     if (!used[i]) {
       mappedBlocks.push({
@@ -142,7 +160,7 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
       used[i] = true;
     }
   }
-  // Sort blocks by start index to preserve original order
+
   mappedBlocks.sort((a, b) => a.start - b.start);
   return { mappedBlocks, lineToBlockIndex };
 }
@@ -482,6 +500,21 @@ export default function Home() {
 
   const [blockSplitWarning, setBlockSplitWarning] = useState<string | null>(null);
 
+  // Loader overlay component
+  function LoaderOverlay({ show }: { show: boolean }) {
+    return show ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/70 dark:bg-gray-900/80 backdrop-blur-sm transition-opacity duration-300" aria-busy="true" role="status">
+        <div className="flex flex-col items-center gap-4 animate-fade-in">
+          <svg className="animate-spin h-12 w-12 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span className="text-lg font-semibold text-blue-700 dark:text-blue-200">Generating explanation...</span>
+        </div>
+      </div>
+    ) : null;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-100 to-gray-300 dark:from-gray-900 dark:to-gray-950">
       {/* Header */}
@@ -504,6 +537,7 @@ export default function Home() {
             {blockSplitWarning}
           </div>
         )}
+        <LoaderOverlay show={aiLoading} />
         {!(blockData.length > 0 && validHighlightRange) ? (
           <div className="w-full max-w-lg sm:max-w-xl md:max-w-2xl mx-auto flex flex-col gap-4 sm:gap-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 gap-2 sm:gap-0">

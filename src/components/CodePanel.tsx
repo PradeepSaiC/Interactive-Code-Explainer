@@ -311,7 +311,7 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
           </button>
         )}
         <button
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition disabled:opacity-50 min-w-[44px] min-h-[44px] text-base"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition disabled:opacity-50 min-w-[44px] min-h-[44px] text-base cursor-pointer"
           onClick={onAIExplain}
           disabled={aiLoading}
           aria-label="Generate AI explanation"
