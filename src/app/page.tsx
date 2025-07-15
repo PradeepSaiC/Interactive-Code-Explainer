@@ -31,35 +31,8 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const mainPrompt = `You are an expert code explainer. Your task is to split the following code into logical, contiguous blocks that are best suited for clear, beginner-friendly explanations. Each block should represent a single logical unit (such as a function, class, import section, variable declaration group, or a related set of statements).
-
-Guidelines:
-- Each block should be self-contained and easy to explain on its own.
-- Do not split in the middle of a logical unit (e.g., inside a function, class, or loop).
-- Preserve all original whitespace and empty lines exactly as in the input.
-- Blocks should be contiguous and in the same order as the original code.
-- Do not skip or duplicate any lines.
-- If there are consecutive empty lines, keep them within the relevant block.
-- Do not add any explanations, comments, or extra text—output only the code blocks.
-- The blocks should be suitable for providing clear, beginner-friendly explanations for each.
-
-Input code:
-\`\`\`${language}\`\`\`
-\`\`\`
-[PASTE CODE HERE]
-\`\`\`
-
-Output format:
-Return an array of code blocks, each as a string, preserving all formatting and whitespace. Do not include any explanations or extra text.
-
-Example Output:
-[
-  "import ...\nimport ...\n",
-  "function foo() {\n  ...\n}\n",
-  "// ... more blocks ..."
-]
-`;
-  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible explainable units, such as individual statements or lines. Return an array of code blocks, each as a string, preserving all formatting and whitespace. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the array of code blocks.`;
+  const mainPrompt = `Split the code below into logical blocks (functions, classes, or related statements). Each block must be contiguous lines. Preserve all whitespace and empty lines. Return only a JSON array of code blocks as strings, in order. Do not add or remove anything.`;
+  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible units (statements or lines). Return only a JSON array of code blocks as strings, in order. Do not add or remove anything.`;
 
   async function getBlocks(prompt: string) {
     const body = {
@@ -627,9 +600,21 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-100 to-gray-300 dark:from-gray-900 dark:to-gray-950">
       {/* Header */}
       <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
-        <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+        <div className="flex items-center gap-2">
+          {/* Logo: Colorful code icon */}
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 shadow text-white mr-2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
+              <rect x="18" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
+              <rect x="8" y="3" width="8" height="3" rx="1.5" fill="currentColor"/>
+              <rect x="8" y="18" width="8" height="3" rx="1.5" fill="currentColor"/>
+            </svg>
+          </span>
+          <span className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white select-none">
+            Interactive Code Explainer
+          </span>
           <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{letterSpacing: '0.05em'}}>Beta</span>
-        </h1>
+        </div>
       </header>
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center w-full px-1 sm:px-2 py-4 sm:py-6">
