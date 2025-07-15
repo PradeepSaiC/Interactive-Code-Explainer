@@ -31,58 +31,52 @@ const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
-  const prompt = `Divide the following code into the smallest *logically meaningful* blocks possible.
+  const mainPrompt = `Divide the following code into logical, explainable blocks. Each block should be a contiguous set of lines that together serve a clear purpose (such as a function, class, loop, conditional, or a group of related statements). If there is a complex or hard-to-understand section, keep it as a single block. Do not split blocks too small (avoid single-line blocks unless necessary), and do not make blocks too large (avoid grouping unrelated code). Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
+  const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible explainable units, such as individual statements or lines. Return a JSON array of code blocks, in order, with each block as a string. Do not add, remove, or modify any lines or whitespace. Do not include explanations or extra text. Return only the JSON array.`;
 
-Each block must:
-- Be a contiguous set of lines that together perform **a single conceptual task** — even if that task is just one line.
-- Reflect what the code *does*, not just what it *is*. For example, a multi-step calculation or a decision flow should be its own block, even if it happens inside a function or loop.
-- Be explainable on its own, without needing surrounding lines.
-- Be separated even if the lines belong to the same method or loop, as long as they serve different micro-purposes (e.g., setup vs. core logic vs. final step).
-- Include even single-line blocks if they are important (like a key print, assignment, or return).
-
-Do **not** group together unrelated operations just because they are within the same scope (function, loop, class, etc).
-
-Return only a **JSON array** of these code blocks, **in order**, where:
-- Each block is a string (preserve exact formatting, indentation, and line breaks).
-- Do **not** modify, add, or remove any code or whitespace.
-- Do **not** include explanations, comments, or extra text — just return the raw JSON array.`;
-
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: prompt }
-        ]
-      }
-    ]
-  };
-  const res = await fetch(GEMINI_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-goog-api-key": GEMINI_API_KEY || ""
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error("Gemini API error (block split): " + res.status);
-  const data = await res.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  let arr: string[] = [];
-  let cleanedText = rawText.trim();
-  if (cleanedText.startsWith('```json')) {
-    cleanedText = cleanedText.replace(/^```json/, '').replace(/```$/, '').trim();
-  } else if (cleanedText.startsWith('```')) {
-    cleanedText = cleanedText.replace(/^```/, '').replace(/```$/, '').trim();
+  async function getBlocks(prompt: string) {
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { text: '\n\nCode:\n' + code }
+          ]
+        }
+      ]
+    };
+    const res = await fetch(GEMINI_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": GEMINI_API_KEY || ""
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error("Gemini API error (block split): " + res.status);
+    const data = await res.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let arr: string[] = [];
+    let cleanedText = rawText.trim();
+    if (cleanedText.startsWith('```json')) {
+      cleanedText = cleanedText.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (cleanedText.startsWith('```')) {
+      cleanedText = cleanedText.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+    try {
+      arr = JSON.parse(cleanedText);
+    } catch {
+      arr = [code];
+    }
+    if (!Array.isArray(arr) || arr.length === 0) {
+      arr = [code];
+    }
+    return arr;
   }
-  try {
-    arr = JSON.parse(cleanedText);
-  } catch {
-    // If parsing fails, treat the entire code as a single block
-    arr = [code];
-  }
-  if (!Array.isArray(arr) || arr.length === 0) {
-    // If still no blocks, treat the entire code as a single block
-    arr = [code];
+
+  let arr = await getBlocks(mainPrompt);
+  if (arr.length === 1 && arr[0] === code) {
+    arr = await getBlocks(fallbackPrompt);
   }
   return arr;
 };
@@ -281,11 +275,6 @@ export default function Home() {
       localStorage.setItem('codeInput', text);
       // 2. Split into blocks with Gemini (always, regardless of code type)
       const geminiBlockTexts = await splitBlocksWithGemini(text, selectedLanguage);
-      if (geminiBlockTexts.length === 1 && geminiBlockTexts[0] === text) {
-        setBlockSplitWarning('Could not split code into blocks. Showing explanation for the entire code.');
-      } else {
-        setBlockSplitWarning(null);
-      }
       // Robustly map Gemini blocks to original code lines
       const { mappedBlocks: blocksToExplain, lineToBlockIndex } = mapBlocksToOriginalLines(text, geminiBlockTexts);
       // Filter out empty blocks (but keep misc block if it covers any lines)
@@ -511,7 +500,7 @@ export default function Home() {
   //   setDebugLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]); // Removed
   // } // Removed
 
-  const [blockSplitWarning, setBlockSplitWarning] = useState<string | null>(null);
+  // Remove the blockSplitWarning and its display in the JSX
 
   // Loader overlay component
   function LoaderOverlay({ show }: { show: boolean }) {
@@ -533,7 +522,7 @@ export default function Home() {
       {/* Header */}
       <header className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 shadow flex items-center justify-between sticky top-0 z-10">
         <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base sm:text-lg md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer</code>
+          <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-base sm:text-lg md:text-xl border border-gray-300 dark:border-gray-700 shadow-sm">Interactive Code Explainer (Beta)</code>
           <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{letterSpacing: '0.05em'}}>Beta</span>
         </h1>
       </header>
@@ -543,11 +532,6 @@ export default function Home() {
         {error && (
           <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-red-100 via-yellow-100 to-red-100 dark:from-red-900 dark:via-yellow-900 dark:to-red-900 text-red-900 dark:text-yellow-100 border-2 border-red-300 dark:border-red-700 font-bold text-base shadow-lg max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
             {error}
-          </div>
-        )}
-        {blockSplitWarning && (
-          <div className="mb-4 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
-            {blockSplitWarning}
           </div>
         )}
         <LoaderOverlay show={aiLoading} />
@@ -634,7 +618,7 @@ export default function Home() {
       </main>
       {/* Footer */}
       <footer className="w-full py-3 sm:py-4 text-center text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800">
-        &copy; {new Date().getFullYear()} Interactive code explainer.
+        &copy; {new Date().getFullYear()} Interactive code explainer (Beta).
       </footer>
       {/* Removed Debug Log panel and all related state, logic, and UI from the page. */}
     </div>
