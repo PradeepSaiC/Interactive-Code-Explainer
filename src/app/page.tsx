@@ -554,27 +554,22 @@ export default function Home() {
         setAILoading(false);
         return;
       }
-      // Map explanations to blocks by array index
-      // Improved: robustly wrap code in Markdown code blocks
-      const explanations: string[] = arr.map((item) => {
+      // Map explanations to blocks by array index (preserve order exactly)
+      const explanations: string[] = Array.isArray(arr) ? arr.map((item) => {
         if (typeof item === 'string') return item;
         if (item && typeof item === 'object') {
-          // Try to extract explanation property or stringify
           return (item as { explanation?: string })?.explanation || JSON.stringify(item);
         }
         return String(item);
-      });
-      const mapped = nonEmptyBlocks.map((b, i) => {
-        return {
-          start: b.start,
-          end: b.end,
-          text: b.text,
-          explanation: explanations[i] || ''
-        };
-      });
-      setBlockData(
-        mapped.map((b: { start: number; end: number; text: string }, i: number) => ({ ...b, explanation: explanations[i] || '' }))
-      );
+      }) : [];
+      // Use the original mappedBlocks order, not filtered nonEmptyBlocks, to preserve block order
+      const mapped = blocksToExplain.map((b, i) => ({
+        start: b.start,
+        end: b.end,
+        text: b.text,
+        explanation: explanations[i] || ''
+      }));
+      setBlockData(mapped);
       setLineToBlockIndex(lineToBlockIndex);
     } catch (e: unknown) {
       setError('An error occurred. Please try again later.');
