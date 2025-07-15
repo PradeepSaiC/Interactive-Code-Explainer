@@ -14,7 +14,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Interactive Code Explainer',
-  description: 'AI-powered app that splits code into logical blocks and explains each block in simple terms.'
+  description: 'AI-powered app that splits code into logical blocks and explains each block in simple terms.',
+  icons: {
+    icon: [
+      { url: '/logo-favicon.svg', type: 'image/svg+xml' }
+    ]
+  }
 };
 
 export default function RootLayout({
