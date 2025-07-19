@@ -8,24 +8,6 @@ import { CustomCodeVisualizer } from "../components/CodePanel";
 import Link from 'next/link';
 
 // Remove the extractBlocksFromText and async effect at the top
-// Integration for MongoDB backend
-const BACKEND_URL = 'https://ccodes.onrender.com'; // Change this to your backend URL
-
-// Function to fetch code from backend
-async function fetchCodeFromBackend(codeId: string) {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/code/${codeId}`);
-    const data = await response.json();
-    
-    if (data.success) {
-      return { code: data.code, topic: data.topic, lang: data.lang };
-    }
-    return null;
-  } catch (error) {
-    console.error('Error fetching code:', error);
-    return null;
-  }
-}
 
 const DEFAULT_CODE_SAMPLES: Record<string, string> = {
   python: `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`,
@@ -294,20 +276,17 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
   return { mappedBlocks, lineToBlockIndex };
 }
 
+// Backend URLs for different languages
+const BACKEND_URLS: Record<string, string> = {
+  c: 'https://ccodes.onrender.com/api/code/', // C backend (production)
+  python: 'https://your-python-backend.example.com/api/code/', // Example, replace with real
+  // Add more as needed
+};
+
 export default function Home() {
-  // On load, get code from localStorage if present, or from URL if available
+  // On load, get code from localStorage if present
   const [text, setText] = useState(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const codeParam = urlParams.get('code');
-      const langParam = urlParams.get('lang');
-      if (codeParam && langParam) {
-        try {
-          return decodeURIComponent(codeParam);
-        } catch {
-          return codeParam;
-        }
-      }
       const stored = localStorage.getItem('codeInput');
       if (stored) return stored;
     }
@@ -319,21 +298,55 @@ export default function Home() {
   const [currentBlock, setCurrentBlock] = useState(0);
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const langParam = urlParams.get('lang');
-      if (langParam && DEFAULT_CODE_SAMPLES[langParam]) {
-        return langParam;
-      }
+      const storedLang = localStorage.getItem('selectedLanguage');
+      if (storedLang) return storedLang;
     }
     return 'python';
   });
   const [showLangWarning, setShowLangWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Remove extractedBlocks and blockApiLoading
+  const [fetchingCode, setFetchingCode] = useState(false);
 
-  // Remove extractBlocksFromText and any fallback block splitting logic
-  // Remove all Tree-sitter/paragraph splitting logic from the frontend
-  // Only use Gemini for block splitting and explanation
+  // Prefill code and language from codeId in URL, using correct backend
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const codeId = urlParams.get('codeId');
+      if (codeId) {
+        setFetchingCode(true);
+        // Try all backends (C first, then others)
+        const tryFetch = async () => {
+          // Try C backend first
+          let data = null;
+          try {
+            const res = await fetch(`${BACKEND_URLS.c}${codeId}`);
+            data = await res.json();
+            if (data && data.code && data.lang) {
+              setText(data.code);
+              setSelectedLanguage(data.lang);
+              localStorage.setItem('codeInput', data.code);
+              localStorage.setItem('selectedLanguage', data.lang);
+              setFetchingCode(false);
+              return;
+            }
+          } catch {}
+          // Try Python backend if not found and you want to support it
+          try {
+            const res = await fetch(`${BACKEND_URLS.python}${codeId}`);
+            data = await res.json();
+            if (data && data.code && data.lang) {
+              setText(data.code);
+              setSelectedLanguage(data.lang);
+              localStorage.setItem('codeInput', data.code);
+              localStorage.setItem('selectedLanguage', data.lang);
+            }
+          } catch {}
+          setFetchingCode(false);
+        };
+        tryFetch();
+      }
+    }
+  }, []);
 
   // 1. Reset blockData and currentBlock when code or language changes
   React.useEffect(() => {
@@ -341,29 +354,7 @@ export default function Home() {
     setBlockData([]);
     setError(null);
   }, [text, selectedLanguage]);
-useEffect(() => {
-  if (typeof window !== 'undefined') {
-    const urlParams = new URLSearchParams(window.location.search);
-    const codeParam = urlParams.get('code');
-    const langParam = urlParams.get('lang');
-    if (codeParam && langParam) {
-      // Do not auto-trigger explanation; just pre-fill code and language
-      return;
-    }
-    const codeId = urlParams.get('codeId');
-    if (codeId) {
-      fetchCodeFromBackend(codeId).then((data) => {
-        if (data) {
-          setText(data.code);
-          setSelectedLanguage(data.lang);
-          setTimeout(() => {
-            handleAIExplain();
-          }, 2000);
-        }
-      });
-    }
-  }
-}, []);
+
   // On window/tab close, remove all localStorage data
   useEffect(() => {
     const handleUnload = () => {
@@ -719,6 +710,7 @@ useEffect(() => {
                   setSelectedLanguage(newLang);
                 }}
                 aria-label="Select programming language"
+                disabled={fetchingCode || aiLoading}
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -735,7 +727,7 @@ useEffect(() => {
               setCode={setText}
               onAIExplain={handleAIExplain}
               aiLoading={aiLoading}
-              readOnly={false}
+              readOnly={fetchingCode || aiLoading}
             />
             {blockData.length > 0 && (
               <div className="mb-2 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm mt-2" role="alert" aria-live="polite">
