@@ -344,6 +344,12 @@ export default function Home() {
 useEffect(() => {
   if (typeof window !== 'undefined') {
     const urlParams = new URLSearchParams(window.location.search);
+    const codeParam = urlParams.get('code');
+    const langParam = urlParams.get('lang');
+    if (codeParam && langParam) {
+      // Do not auto-trigger explanation; just pre-fill code and language
+      return;
+    }
     const codeId = urlParams.get('codeId');
     if (codeId) {
       fetchCodeFromBackend(codeId).then((data) => {
