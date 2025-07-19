@@ -7,7 +7,6 @@ import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
 import Link from 'next/link';
 
-
 // Remove the extractBlocksFromText and async effect at the top
 
 const DEFAULT_CODE_SAMPLES: Record<string, string> = {
@@ -317,7 +316,10 @@ export default function Home() {
       if (codeId && lang && BACKEND_URLS[lang]) {
         setFetchingCode(true);
         fetch(`${BACKEND_URLS[lang]}${codeId}`)
-          .then(res => res.json())
+          .then(res => {
+            if (!res.ok) throw new Error('Not found');
+            return res.json();
+          })
           .then(data => {
             if (data && data.code && data.lang) {
               setText(data.code);
@@ -325,6 +327,9 @@ export default function Home() {
               localStorage.setItem('codeInput', data.code);
               localStorage.setItem('selectedLanguage', data.lang);
             }
+          })
+          .catch(() => {
+            setError('Code not found or backend error.');
           })
           .finally(() => setFetchingCode(false));
       }
