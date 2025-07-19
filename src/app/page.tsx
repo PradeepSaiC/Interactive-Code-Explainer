@@ -279,7 +279,9 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
 // Backend URLs for different languages
 const BACKEND_URLS: Record<string, string> = {
   c: 'https://ccodes.onrender.com/api/code/', // C backend (production)
-  python: 'https://your-python-backend.example.com/api/code/', // Example, replace with real
+  python: 'https://python-codes.onrender.com/api/code/', // Python backend (production)
+  java: 'https://javacodes.onrender.com/api/code/', // Java backend (production)
+  cpp: 'https://cpp-codes-74kf.onrender.com/api/code/', // C++ backend (production)
   // Add more as needed
 };
 
