@@ -7,6 +7,7 @@ import ExplanationPanel from "../components/ExplanationPanel";
 import { CustomCodeVisualizer } from "../components/CodePanel";
 import Link from 'next/link';
 
+
 // Remove the extractBlocksFromText and async effect at the top
 
 const DEFAULT_CODE_SAMPLES: Record<string, string> = {
@@ -307,43 +308,25 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [fetchingCode, setFetchingCode] = useState(false);
 
-  // Prefill code and language from codeId in URL, using correct backend
+  // Prefill code and language from codeId and lang in URL, using correct backend
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const codeId = urlParams.get('codeId');
-      if (codeId) {
+      const lang = urlParams.get('lang');
+      if (codeId && lang && BACKEND_URLS[lang]) {
         setFetchingCode(true);
-        // Try all backends (C first, then others)
-        const tryFetch = async () => {
-          // Try C backend first
-          let data = null;
-          try {
-            const res = await fetch(`${BACKEND_URLS.c}${codeId}`);
-            data = await res.json();
-            if (data && data.code && data.lang) {
-              setText(data.code);
-              setSelectedLanguage(data.lang);
-              localStorage.setItem('codeInput', data.code);
-              localStorage.setItem('selectedLanguage', data.lang);
-              setFetchingCode(false);
-              return;
-            }
-          } catch {}
-          // Try Python backend if not found and you want to support it
-          try {
-            const res = await fetch(`${BACKEND_URLS.python}${codeId}`);
-            data = await res.json();
+        fetch(`${BACKEND_URLS[lang]}${codeId}`)
+          .then(res => res.json())
+          .then(data => {
             if (data && data.code && data.lang) {
               setText(data.code);
               setSelectedLanguage(data.lang);
               localStorage.setItem('codeInput', data.code);
               localStorage.setItem('selectedLanguage', data.lang);
             }
-          } catch {}
-          setFetchingCode(false);
-        };
-        tryFetch();
+          })
+          .finally(() => setFetchingCode(false));
       }
     }
   }, []);
