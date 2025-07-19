@@ -8,6 +8,24 @@ import { CustomCodeVisualizer } from "../components/CodePanel";
 import Link from 'next/link';
 
 // Remove the extractBlocksFromText and async effect at the top
+// Integration for MongoDB backend
+const BACKEND_URL = 'https://ccodes.onrender.com'; // Change this to your backend URL
+
+// Function to fetch code from backend
+async function fetchCodeFromBackend(codeId: string) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/code/${codeId}`);
+    const data = await response.json();
+    
+    if (data.success) {
+      return { code: data.code, topic: data.topic, lang: data.lang };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching code:', error);
+    return null;
+  }
+}
 
 const DEFAULT_CODE_SAMPLES: Record<string, string> = {
   python: `# Welcome to the Interactive Code Explainer! Paste or edit your code below. Click 'Get Explanation' to see block-by-block explanations.\ndef hello_world():\n    # Print Hello, World! to the console\n    print('Hello, World!')\n\nhello_world()`,
