@@ -295,9 +295,19 @@ function mapBlocksToOriginalLines(originalCode: string, geminiBlocks: string[]) 
 }
 
 export default function Home() {
-  // On load, get code from localStorage if present
+  // On load, get code from localStorage if present, or from URL if available
   const [text, setText] = useState(() => {
     if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const codeParam = urlParams.get('code');
+      const langParam = urlParams.get('lang');
+      if (codeParam && langParam) {
+        try {
+          return decodeURIComponent(codeParam);
+        } catch {
+          return codeParam;
+        }
+      }
       const stored = localStorage.getItem('codeInput');
       if (stored) return stored;
     }
@@ -307,7 +317,16 @@ export default function Home() {
   const [lineToBlockIndex, setLineToBlockIndex] = useState<number[] | undefined>(undefined);
   const [aiLoading, setAILoading] = useState(false);
   const [currentBlock, setCurrentBlock] = useState(0);
-  const [selectedLanguage, setSelectedLanguage] = useState("python");
+  const [selectedLanguage, setSelectedLanguage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const langParam = urlParams.get('lang');
+      if (langParam && DEFAULT_CODE_SAMPLES[langParam]) {
+        return langParam;
+      }
+    }
+    return 'python';
+  });
   const [showLangWarning, setShowLangWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Remove extractedBlocks and blockApiLoading
