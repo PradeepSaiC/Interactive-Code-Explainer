@@ -322,7 +322,23 @@ export default function Home() {
     setBlockData([]);
     setError(null);
   }, [text, selectedLanguage]);
-
+useEffect(() => {
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeId = urlParams.get('codeId');
+    if (codeId) {
+      fetchCodeFromBackend(codeId).then((data) => {
+        if (data) {
+          setText(data.code);
+          setSelectedLanguage(data.lang);
+          setTimeout(() => {
+            handleAIExplain();
+          }, 2000);
+        }
+      });
+    }
+  }
+}, []);
   // On window/tab close, remove all localStorage data
   useEffect(() => {
     const handleUnload = () => {
