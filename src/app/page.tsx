@@ -654,6 +654,21 @@ export default function Home() {
     ) : null;
   }
 
+  // Add a loader overlay for fetching code
+  function FetchingOverlay({ show }: { show: boolean }) {
+    return show ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/70 dark:bg-gray-900/80 backdrop-blur-sm transition-opacity duration-300" aria-busy="true" role="status">
+        <div className="flex flex-col items-center gap-4 animate-fade-in">
+          <svg className="animate-spin h-12 w-12 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span className="text-lg font-semibold text-blue-700 dark:text-blue-200">Fetching code...</span>
+        </div>
+      </div>
+    ) : null;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-100 to-gray-300 dark:from-gray-900 dark:to-gray-950">
       {/* Header */}
@@ -678,6 +693,7 @@ export default function Home() {
       </header>
       {/* Main content */}
       <main className="flex-1 flex flex-col items-center justify-center w-full px-1 sm:px-2 py-4 sm:py-6">
+        <FetchingOverlay show={fetchingCode} />
         {/* Error display */}
         {error && (
           <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-red-100 via-yellow-100 to-red-100 dark:from-red-900 dark:via-yellow-900 dark:to-red-900 text-red-900 dark:text-yellow-100 border-2 border-red-300 dark:border-red-700 font-bold text-base shadow-lg max-w-2xl w-full text-center animate-fade-in" role="alert" aria-live="polite">
