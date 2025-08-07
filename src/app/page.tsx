@@ -282,6 +282,7 @@ const BACKEND_URLS: Record<string, string> = {
   python: 'https://python-codes.onrender.com/api/code/', // Python backend (production)
   java: 'https://javacodes.onrender.com/api/code/', // Java backend (production)
   cpp: 'https://cpp-codes-74kf.onrender.com/api/code/', // C++ backend (production)
+  leetcode: 'https://leetcode-bot-a4i1.onrender.com/api/code/', // LeetCode bot backend
   // Add more as needed
 };
 
@@ -315,25 +316,33 @@ export default function Home() {
       const urlParams = new URLSearchParams(window.location.search);
       const codeId = urlParams.get('codeId');
       const lang = urlParams.get('lang');
-      if (codeId && lang && BACKEND_URLS[lang]) {
-        setFetchingCode(true);
-        fetch(`${BACKEND_URLS[lang]}${codeId}`)
-          .then(res => {
-            if (!res.ok) throw new Error('Not found');
-            return res.json();
-          })
-          .then(data => {
-            if (data && data.code && data.lang) {
-              setText(data.code);
-              setSelectedLanguage(data.lang);
-              localStorage.setItem('codeInput', data.code);
-              localStorage.setItem('selectedLanguage', data.lang);
-            }
-          })
-          .catch(() => {
-            setError('Code not found or backend error.');
-          })
-          .finally(() => setFetchingCode(false));
+      if (codeId && lang) {
+        // Check if this is a LeetCode language (c, cpp, java, python)
+        const leetcodeLanguages = ['c', 'cpp', 'java', 'python'];
+        const backendUrl = leetcodeLanguages.includes(lang) 
+          ? 'https://leetcode-bot-a4i1.onrender.com/api/code/' 
+          : BACKEND_URLS[lang];
+        
+        if (backendUrl) {
+          setFetchingCode(true);
+          fetch(`${backendUrl}${codeId}?lang=${lang}`)
+            .then(res => {
+              if (!res.ok) throw new Error('Not found');
+              return res.json();
+            })
+            .then(data => {
+              if (data && data.code && data.lang) {
+                setText(data.code);
+                setSelectedLanguage(data.lang);
+                localStorage.setItem('codeInput', data.code);
+                localStorage.setItem('selectedLanguage', data.lang);
+              }
+            })
+            .catch(() => {
+              setError('Code not found or backend error.');
+            })
+            .finally(() => setFetchingCode(false));
+        }
       }
     }
   }, []);
