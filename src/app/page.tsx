@@ -309,6 +309,11 @@ export default function Home() {
   const [showLangWarning, setShowLangWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchingCode, setFetchingCode] = useState(false);
+  
+  // New state for Run Code feature
+  const [runOutput, setRunOutput] = useState<{ output: string; errors: string; suggestions: string } | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showRunOutput, setShowRunOutput] = useState(false);
 
   // Prefill code and language from codeId and lang in URL, using correct backend
   useEffect(() => {
@@ -644,6 +649,108 @@ export default function Home() {
     setAILoading(false);
   };
 
+  // New function to run code with Gemini
+  const handleRunCode = async () => {
+    if (!text.trim()) {
+      setError('Please enter some code to run.');
+      return;
+    }
+
+    setIsRunning(true);
+    setRunOutput(null);
+    setShowRunOutput(true);
+    setError(null);
+
+    try {
+      const prompt = `Execute the following ${selectedLanguage} code and provide the output. If there are any errors, explain what went wrong and how to fix them. If the code runs successfully, show the output.
+
+Code:
+\`\`\`${selectedLanguage}
+${text}
+\`\`\`
+
+Please respond in the following JSON format:
+{
+  "output": "The program output (if successful)",
+  "errors": "Any error messages or issues found",
+  "suggestions": "How to fix the errors or improve the code"
+}
+
+If the code runs successfully, put the actual output in "output" and leave "errors" empty. If there are errors, put the error details in "errors" and provide helpful suggestions in "suggestions".`;
+
+      const body = {
+        contents: [
+          {
+            parts: [
+              { text: prompt }
+            ]
+          }
+        ]
+      };
+
+      const res = await fetch(GEMINI_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": GEMINI_API_KEY || ""
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) throw new Error("Gemini API error (run code): " + res.status);
+      
+      const data = await res.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      let result;
+      try {
+        // Try to parse JSON response
+        const jsonMatch = rawText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (jsonMatch) {
+          result = JSON.parse(jsonMatch[1]);
+        } else {
+          // Try to find JSON in the text
+          const firstBrace = rawText.indexOf('{');
+          const lastBrace = rawText.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            const jsonString = rawText.substring(firstBrace, lastBrace + 1);
+            result = JSON.parse(jsonString);
+          } else {
+            // Fallback: create a basic response
+            result = {
+              output: rawText.includes('error') || rawText.includes('Error') ? '' : rawText,
+              errors: rawText.includes('error') || rawText.includes('Error') ? rawText : '',
+              suggestions: rawText.includes('error') || rawText.includes('Error') ? 'Please check the code for syntax errors and try again.' : ''
+            };
+          }
+        }
+      } catch (e) {
+        // If JSON parsing fails, create a fallback response
+        result = {
+          output: rawText.includes('error') || rawText.includes('Error') ? '' : rawText,
+          errors: rawText.includes('error') || rawText.includes('Error') ? rawText : '',
+          suggestions: rawText.includes('error') || rawText.includes('Error') ? 'Please check the code for syntax errors and try again.' : ''
+        };
+      }
+
+      setRunOutput({
+        output: result.output || '',
+        errors: result.errors || '',
+        suggestions: result.suggestions || ''
+      });
+
+    } catch (e: unknown) {
+      setError('Failed to run code. Please try again.');
+      setRunOutput({
+        output: '',
+        errors: 'Failed to execute code',
+        suggestions: 'Please check your internet connection and try again.'
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   // function addLog(msg: string) { // Removed
   //   setDebugLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]); // Removed
   // } // Removed
@@ -678,6 +785,111 @@ export default function Home() {
         </div>
       </div>
     ) : null;
+  }
+
+  // Run Code Output Panel Component
+  function RunOutputPanel({ output, onClose }: { output: { output: string; errors: string; suggestions: string } | null; onClose: () => void }) {
+    if (!output) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Code Execution Result</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Beta - feature is still under development</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Close output panel"
+            >
+              <svg className="w-6 h-6 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
+            {/* Output Section */}
+            {output.output && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">Output</h4>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
+                    {output.output}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* Errors Section */}
+            {output.errors && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">Errors</h4>
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 border border-red-200 dark:border-red-700">
+                  <pre className="text-sm text-red-800 dark:text-red-200 whitespace-pre-wrap font-mono">
+                    {output.errors}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* Suggestions Section */}
+            {output.suggestions && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white">Suggestions</h4>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                  <div className="text-sm text-blue-800 dark:text-blue-200 prose prose-sm dark:prose-invert max-w-none">
+                    {output.suggestions}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* No output or errors */}
+            {!output.output && !output.errors && (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400">No output or errors detected</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -725,7 +937,7 @@ export default function Home() {
                   setSelectedLanguage(newLang);
                 }}
                 aria-label="Select programming language"
-                disabled={fetchingCode || aiLoading}
+                disabled={fetchingCode || aiLoading || isRunning}
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -740,10 +952,42 @@ export default function Home() {
             <CodePanel
               code={text}
               setCode={setText}
-              onAIExplain={handleAIExplain}
               aiLoading={aiLoading}
-              readOnly={fetchingCode || aiLoading}
+              readOnly={fetchingCode || aiLoading || isRunning}
             />
+            
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <button
+                onClick={handleAIExplain}
+                disabled={aiLoading || isRunning || !text.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                {aiLoading ? 'Generating Explanation...' : 'Get Explanation'}
+              </button>
+              
+              <button
+                onClick={handleRunCode}
+                disabled={aiLoading || isRunning || !text.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRunning ? (
+                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {isRunning ? 'Running Code...' : 'Run Code'}
+              </button>
+            </div>
+            
             {blockData.length > 0 && (
               <div className="mb-2 p-3 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700 font-semibold text-sm mt-2" role="alert" aria-live="polite">
                 No valid blocks to highlight. Please check your code or try again.
@@ -790,6 +1034,14 @@ export default function Home() {
               </div>
             </div>
           </>
+        )}
+        
+        {/* Run Code Output Modal */}
+        {showRunOutput && runOutput && (
+          <RunOutputPanel 
+            output={runOutput} 
+            onClose={() => setShowRunOutput(false)} 
+          />
         )}
       </main>
       {/* Footer */}
