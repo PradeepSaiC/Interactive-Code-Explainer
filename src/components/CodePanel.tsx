@@ -17,7 +17,6 @@ import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 interface CodePanelProps {
   code: string;
   setCode: (val: string) => void;
-  onAIExplain: () => void;
   aiLoading: boolean;
   highlightRange?: [number, number];
   hasBlocks?: boolean;
@@ -257,7 +256,7 @@ export const CustomCodeVisualizer: React.FC<CustomCodeVisualizerProps> = ({
   );
 };
 
-const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoading, highlightRange, hasBlocks, currentBlock, totalBlocks, onPrevBlock, onNextBlock, setCurrentBlockForLine, readOnly, highlightClass }) => {
+const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, aiLoading, highlightRange, hasBlocks, currentBlock, totalBlocks, onPrevBlock, onNextBlock, setCurrentBlockForLine, readOnly, highlightClass }) => {
   const codeLines = code.split('\n');
   const validHighlight =
     highlightRange &&
@@ -299,40 +298,30 @@ const CodePanel: React.FC<CodePanelProps> = ({ code, setCode, onAIExplain, aiLoa
           readOnly={readOnly ?? false}
         />
       </div>
-      <div className="mt-3 sm:mt-4 flex flex-row items-center justify-center gap-2 sm:gap-4 w-full">
-        {hasBlocks && onPrevBlock && (
-          <button
-            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            onClick={onPrevBlock}
-            disabled={currentBlock === 0 || aiLoading}
-            aria-label="Previous block"
-          >
-            Prev
-          </button>
-        )}
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition disabled:opacity-50 min-w-[44px] min-h-[44px] text-base cursor-pointer"
-          onClick={onAIExplain}
-          disabled={aiLoading}
-          aria-label="Generate AI explanation"
-        >
-          {aiLoading ? (
-            <span className="flex items-center gap-2"><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Loading...</span>
-          ) : (
-            "Generate Explanation"
+      {hasBlocks && (onPrevBlock || onNextBlock) && (
+        <div className="mt-3 sm:mt-4 flex flex-row items-center justify-center gap-2 sm:gap-4 w-full">
+          {onPrevBlock && (
+            <button
+              className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              onClick={onPrevBlock}
+              disabled={currentBlock === 0 || aiLoading}
+              aria-label="Previous block"
+            >
+              Prev
+            </button>
           )}
-        </button>
-        {hasBlocks && onNextBlock && (
-          <button
-            className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            onClick={onNextBlock}
-            disabled={currentBlock === ((totalBlocks ?? 1) - 1) || aiLoading}
-            aria-label="Next block"
-          >
-            Next
-          </button>
-        )}
-      </div>
+          {onNextBlock && (
+            <button
+              className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-400 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900 disabled:opacity-50 min-w-[44px] min-h-[44px] text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              onClick={onNextBlock}
+              disabled={currentBlock === ((totalBlocks ?? 1) - 1) || aiLoading}
+              aria-label="Next block"
+            >
+              Next
+            </button>
+          )}
+        </div>
+      )}
       {hasBlocks && currentBlock !== undefined && totalBlocks !== undefined && (
         <div className="flex justify-center mt-2 text-gray-400 text-xs select-none">
           Block {currentBlock + 1} / {totalBlocks}
