@@ -2,12 +2,18 @@
   "name": "appcode",
   "version": "0.1.0",
   "private": true,
+
+  "engines": {
+    "node": "20.x"
+  },
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
+
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",
     "@codemirror/lang-python": "^6.2.1",
@@ -38,6 +44,7 @@
     "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.25.8"
   },
+
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
