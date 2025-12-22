@@ -416,6 +416,7 @@ export default function Home() {
   // Handler to trigger AI explanation for all blocks
   // Only ever set text from user input or localStorage. Never overwrite text with Gemini output or processed code.
   const handleAIExplain = async () => {
+    if (aiLoading) return;
     // Pick a new random theme for this session
     setThemeIdx(Math.floor(Math.random() * 20));
     setShowLangWarning(false);
@@ -519,7 +520,15 @@ export default function Home() {
         },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error("Gemini API error (explanation): " + res.status);
+      if (res.status === 429) {
+  setError("AI is busy. Please wait 10 seconds and try again.");
+  return;
+}
+
+if (!res.ok) {
+  throw new Error("Gemini API error");
+}
+
       const data = await res.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       if (selectedLanguage === 'c') {
@@ -641,7 +650,10 @@ export default function Home() {
       setError('An error occurred. Please try again later.');
       setBlockData([]);
     }
-    setAILoading(false);
+    setTimeout(() => {
+  setAILoading(false);
+}, 10000); // 10 seconds cooldown
+
   };
 
   // function addLog(msg: string) { // Removed
