@@ -28,35 +28,27 @@ const LANGUAGE_OPTIONS = [
 // Remove all Tree-sitter and paragraph splitting logic from the frontend
 // Use Gemini for both block splitting and explanation
 
+import { GoogleGenAI } from "@google/genai";
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const splitBlocksWithGemini = async (code: string, language: string) => {
   const mainPrompt = `Split the code below into as many small, logical blocks as possible (functions, classes, or related statements). For large code, do not group unrelated code together. Each block must be a contiguous set of lines from the original code. Preserve all whitespace and empty lines. Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
   const fallbackPrompt = `If you cannot find logical blocks, split the code into the smallest possible units (statements or lines). Output a JSON array of code blocks as strings, in order. Do not add, remove, or modify any lines. Be accurate.`;
 
   async function getBlocks(prompt: string) {
-    const body = {
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            { text: '\n\nCode:\n' + code }
-          ]
-        }
-      ]
-    };
-    const res = await fetch(GEMINI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY || ""
-      },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) throw new Error("Gemini API error (block split): " + res.status);
-    const data = await res.json();
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let rawText = "";
+    try {
+      console.log('Sending split request to Gemini...');
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt + '\n\nCode:\n' + code,
+      });
+      rawText = response.text || "";
+    } catch (err: any) {
+      console.error('Gemini error (block split):', err);
+      throw new Error("Gemini API error (block split): " + (err.status || err.message));
+    }
     let arr: string[] = [];
     let cleanedText = rawText.trim();
     if (cleanedText.startsWith('```json')) {
@@ -319,10 +311,10 @@ export default function Home() {
       if (codeId && lang) {
         // Check if this is a LeetCode language (c, cpp, java, python)
         const leetcodeLanguages = ['c', 'cpp', 'java', 'python'];
-        const backendUrl = leetcodeLanguages.includes(lang) 
-          ? 'https://leetcode-bot-a4i1.onrender.com/api/code/' 
+        const backendUrl = leetcodeLanguages.includes(lang)
+          ? 'https://leetcode-bot-a4i1.onrender.com/api/code/'
           : BACKEND_URLS[lang];
-        
+
         if (backendUrl) {
           setFetchingCode(true);
           fetch(`${backendUrl}${codeId}?lang=${lang}`)
@@ -503,40 +495,28 @@ export default function Home() {
           "Example output:[\\\"This block defines a function called `foo` that returns the number 42. The function has no parameters and simply returns a constant value.\\\",\\\"This block calls the `foo` function and prints its return value (42) to the console using the `print` function.\\\"]\\n\\n" +
           "Now, here are the blocks to explain:\\n" + numberedBlocks;
       }
-      const body = {
-        contents: [
-          {
-            parts: [
-              { text: prompt }
-            ]
-          }
-        ]
-      };
-      const res = await fetch(GEMINI_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-goog-api-key": GEMINI_API_KEY || ""
-        },
-        body: JSON.stringify(body)
-      });
-      if (res.status === 429) {
-  setError("AI is busy. Please wait 10 seconds and try again.");
-  return;
-}
-
-if (!res.ok) {
-  throw new Error("Gemini API error");
-}
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      let rawText = "";
+      try {
+        console.log('Sending explanation request to Gemini...');
+        const response = await ai.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: prompt,
+        });
+        rawText = response.text || "";
+      } catch (err: any) {
+        console.error('Gemini error (explanation):', err);
+        if (err.status === 429 || (err.message && err.message.includes("429"))) {
+          setError("AI is busy. Please wait 10 seconds and try again.");
+          return;
+        }
+        throw new Error("Gemini API error");
+      }
       if (selectedLanguage === 'c') {
         // addLog('Gemini explanation rawText (C): ' + rawText); // Removed
       }
       let arr: unknown[] = [];
       let cleanedText = rawText.trim();
-      
+
       // Handle Gemini responses wrapped in markdown code blocks
       // Pattern: ```json [ ... ] ```
       const jsonCodeBlockMatch = cleanedText.match(/```json\s*(\[[\s\S]*?\])\s*```/);
@@ -567,11 +547,11 @@ if (!res.ok) {
           }
         }
       }
-      
+
       // addLog(`[Gemini] nonEmptyBlocks.length: ${nonEmptyBlocks.length}, arr.length: ${Array.isArray(arr) ? arr.length : 'not array'}`); // Removed
       // addLog('[Gemini] Raw response: ' + rawText); // Removed
       // addLog('[Gemini] Parsed array: ' + JSON.stringify(arr)); // Removed
-      
+
       // Check if Gemini returned code blocks instead of explanations
       if (Array.isArray(arr) && arr.length > 0) {
         const firstItem = arr[0];
@@ -587,17 +567,17 @@ if (!res.ok) {
             /this block/, /this code/, /this function/, /this method/, /this class/, /explains/, /defines/, /creates/,
             /prints/, /returns/, /calculates/, /initializes/, /declares/, /assigns/, /calls/, /executes/
           ];
-          
+
           const startsWithCode = codeStartPatterns.some(pattern => pattern.test(firstItem.trim()));
           const containsExplanation = explanationPatterns.some(pattern => pattern.test(firstItem.toLowerCase()));
-          
+
           // addLog('[Gemini] Detection debug: ' + JSON.stringify({ // Removed
           //   firstItem: firstItem.substring(0, 100) + '...', // Removed
           //   startsWithCode, // Removed
           //   containsExplanation, // Removed
           //   willTriggerFallback: startsWithCode && !containsExplanation // Removed
           // })); // Removed
-          
+
           // Only trigger fallback if it starts with code AND doesn't contain explanation text
           if (startsWithCode && !containsExplanation) {
             // addLog('[Gemini] Detected code blocks instead of explanations, creating fallback'); // Removed
@@ -614,7 +594,7 @@ if (!res.ok) {
           }
         }
       }
-      
+
       if (!Array.isArray(arr) || arr.length !== nonEmptyBlocks.length) {
         // Fallback: create basic explanations if parsing fails
         // addLog('[Gemini] Creating fallback explanations due to parsing error'); // Removed
@@ -651,8 +631,8 @@ if (!res.ok) {
       setBlockData([]);
     }
     setTimeout(() => {
-  setAILoading(false);
-}, 10000); // 10 seconds cooldown
+      setAILoading(false);
+    }, 10000); // 10 seconds cooldown
 
   };
 
@@ -701,17 +681,17 @@ if (!res.ok) {
           <Link href="/" passHref legacyBehavior>
             <a onClick={() => { setText(DEFAULT_CODE_SAMPLES['python']); setSelectedLanguage('python'); }} className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 shadow text-white mr-2 cursor-pointer" aria-label="Home">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
-                <rect x="18" y="5" width="3" height="14" rx="1.5" fill="currentColor"/>
-                <rect x="8" y="3" width="8" height="3" rx="1.5" fill="currentColor"/>
-                <rect x="8" y="18" width="8" height="3" rx="1.5" fill="currentColor"/>
+                <rect x="3" y="5" width="3" height="14" rx="1.5" fill="currentColor" />
+                <rect x="18" y="5" width="3" height="14" rx="1.5" fill="currentColor" />
+                <rect x="8" y="3" width="8" height="3" rx="1.5" fill="currentColor" />
+                <rect x="8" y="18" width="8" height="3" rx="1.5" fill="currentColor" />
               </svg>
             </a>
           </Link>
           <span className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white select-none">
             Interactive Code Explainer
           </span>
-          <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{letterSpacing: '0.05em'}}>Beta</span>
+          <span className="ml-2 px-2 py-0.5 rounded bg-yellow-300 text-yellow-900 text-xs font-bold align-middle" style={{ letterSpacing: '0.05em' }}>Beta</span>
         </div>
       </header>
       {/* Main content */}
@@ -773,12 +753,12 @@ if (!res.ok) {
               >
                 <span className="sr-only">Back to Edit</span>
                 <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M14.5 4L8.5 11L14.5 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M14.5 4L8.5 11L14.5 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </div>
             <div className="w-full flex flex-col lg:flex-row gap-4 md:gap-8 transition-all duration-300 max-w-full">
-              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-grow items-stretch justify-stretch w-full lg:w-[70vw] max-w-full min-w-0" style={{ height: '480px', maxHeight: '480px', minHeight: '320px' }}>
                 <CustomCodeVisualizer
                   code={text}
                   blockData={validBlocks}
@@ -792,8 +772,8 @@ if (!res.ok) {
                 />
               </div>
               <div className="hidden lg:block w-0.5 h-full bg-gradient-to-b from-blue-200/60 to-pink-100/60 mx-0" aria-hidden="true" />
-              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0" style={{height: '480px', maxHeight: '480px', minHeight: '320px'}}>
-                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full h-full" style={{height: '100%'}}>
+              <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 w-full lg:w-[30vw] mt-4 lg:mt-0 max-w-full min-w-0" style={{ height: '480px', maxHeight: '480px', minHeight: '320px' }}>
+                <div className="break-words whitespace-pre-wrap overflow-x-auto max-w-full h-full" style={{ height: '100%' }}>
                   <ExplanationPanel
                     aiExplanation={typeof blockData[currentBlock]?.explanation === 'string' ? blockData[currentBlock].explanation : (blockData[currentBlock]?.explanation ? JSON.stringify(blockData[currentBlock].explanation) : "")}
                     aiLoading={aiLoading}
