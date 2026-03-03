@@ -93,10 +93,10 @@ Section 1.10.33 of "de Finibus Bonorum et Malorum", written by Cicero in 45 BC
   };
 
   return (
-    <div className="flex ">
-      <div className="w-2/4 mt-6 ml-2 border-2">
+    <div className="flex flex-wrap mb-20 md:flex-nowrap md:gap-6">
+      <div className="md:w-2/4 mr-6 mt-6 ml-2 border-2">
         <div className="flex justify-between p-1">
-          <h2 className="text-2xl font-semibold">Write Your Code Below</h2>
+          <h2 className="text-xl md:text-2xl font-semibold">Write Your Code Below</h2>
           <button
             className="border-2 p-1 w-50 cursor-pointer"
             onClick={() => {
@@ -134,7 +134,7 @@ Section 1.10.33 of "de Finibus Bonorum et Malorum", written by Cicero in 45 BC
           onMount={handleEditorDidMount}
         />
       </div>
-      <div className="border-2 mt-6 w-2/4 ml-10 mr-10 p-2">
+      <div className="border-2 w-full mr-6 mt-6 md:w-2/4 ml-2 md:mr-10 p-2">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-semibold "> Explaination </h2>
           <div className="mr-3 text-xl">
