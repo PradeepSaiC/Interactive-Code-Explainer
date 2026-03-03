@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+  .myHighlight {
+            background-color: rgba(35, 37, 172, 0.3);
+          }
