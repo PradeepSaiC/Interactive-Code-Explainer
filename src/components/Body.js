@@ -94,7 +94,7 @@ Section 1.10.33 of "de Finibus Bonorum et Malorum", written by Cicero in 45 BC
 
   return (
     <div className="flex flex-wrap mb-20 md:flex-nowrap md:gap-6">
-      <div className="md:w-2/4 mr-6 mt-6 ml-2 border-2">
+      <div className="md:w-2/4 w-full mr-6 mt-6 ml-2 border-2">
         <div className="flex justify-between p-1">
           <h2 className="text-xl md:text-2xl font-semibold">Write Your Code Below</h2>
           <button
