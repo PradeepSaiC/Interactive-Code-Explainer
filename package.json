@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "parcel ./src/index.html"
+    "dev": "parcel ./src/index.html",
+    "build":"npx parcel build src/index.html"
   },
   "devDependencies": {
     "parcel": "^2.16.4"
