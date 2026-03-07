@@ -155,7 +155,7 @@ const Body = () => {
           <p>
             {explaination === ""
               ? "Explaination will be displayed here"
-              : explaination}
+              : setExplaination(explaination)}
           </p>
         </div>
       </div>
