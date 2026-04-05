@@ -1,11 +1,11 @@
 import ReactDOM from "react-dom/client";
 import NavBar from "./components/NavBar";
-import Body from "./components/Body";
+import Playground from "./components/Playground";
 const App = () => {
   return (
-    <div>
+    <div className="w-screen h-screen flex flex-col">
       <NavBar />
-      <Body />
+      <Playground/>
     </div>
   );
 };
