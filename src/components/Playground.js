@@ -76,10 +76,9 @@ const Playground = () => {
     setIsGenerating(true);
     setExplaination("Generating explaination....\nThis might take few seconds");
     try{
-          const ai = new GoogleGenAI({
-            apiKey:process.env.GEMINI_API_KEY,
-          
-          });
+          const keys = (process.env.GEMINI_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
+          const randomKey = keys[Math.floor(Math.random() * keys.length)];
+          const ai = new GoogleGenAI({ apiKey: randomKey });
        const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Act as a senior software engineer and an expert code teacher.
