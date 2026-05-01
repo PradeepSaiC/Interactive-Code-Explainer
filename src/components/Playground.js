@@ -14,17 +14,20 @@ const Playground = () => {
     const [idx, setIdx] = useState(0);
     const decorationRef = useRef([]);
 
+  const [isGenerating, setIsGenerating] = useState(false);
+
   useEffect(() => {
     const fetchProblem = async () => {
       const problemId = searchParams.get("problemId");
       if (problemId) {
         try {
-          const res = await fetch(`http://localhost:3000/api/problems/${problemId}`);
+          const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000';
+          const res = await fetch(`${backendUrl}/api/problems/${problemId}`);
           if (res.ok) {
             const data = await res.json();
             const lang = searchParams.get("language") || "javascript";
             // Map common language names to key names in solutions
-            const langKey = lang.toLowerCase() === 'c++' ? 'cpp' : lang.toLowerCase();
+            const langKey = lang.toLowerCase() === 'cpp' || lang.toLowerCase() === 'c++' ? 'cpp' : lang.toLowerCase();
             const solutionCode = data.solutions[langKey] || data.solutions[lang] || "";
             
             if (solutionCode) {
@@ -70,6 +73,7 @@ const Playground = () => {
       editor.revealRangeInCenter(range);
     };
   const generateExplaination = async (code) => {
+    setIsGenerating(true);
     setExplaination("Generating explaination....\nThis might take few seconds");
     try{
           const ai = new GoogleGenAI({
@@ -159,6 +163,8 @@ ${code}`,
       console.log(err);
       
       setExplaination("Hey API is currently busy.Can you please try again.")
+    } finally {
+      setIsGenerating(false);
     }
   };
   return (
@@ -208,9 +214,9 @@ ${code}`,
                     setExplaination(list[newIdx].explanation);
                     applyVisuals(list[newIdx].lines[0], list[newIdx].lines[1]);
                   }}
-                  disabled={idx === 0 }
+                  disabled={idx === 0 || isGenerating }
                   className={`px-4 py-2 cursor-pointer text-sm font-medium border rounded-md 
-                    ${idx === 0 ? 'bg-gray-300 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'}`}
+                    ${(idx === 0 || isGenerating) ? 'bg-gray-300 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'}`}
                 >
                   Previous
                 </button>
@@ -222,9 +228,9 @@ ${code}`,
                     setExplaination(list[newIdx].explanation);
                     applyVisuals(list[newIdx].lines[0], list[newIdx].lines[1]);
                   }}
-                  disabled={idx === list.length - 1 || list.length === 0}
+                  disabled={idx === list.length - 1 || list.length === 0 || isGenerating}
                   className={`px-4 py-2 cursor-pointer text-sm font-medium border rounded-md 
-                    ${(idx === list.length - 1 || list.length === 0) ? 'bg-gray-300 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'}`}
+                    ${(idx === list.length - 1 || list.length === 0 || isGenerating) ? 'bg-gray-300 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'}`}
                 >
                   Next
                 </button>
@@ -232,7 +238,7 @@ ${code}`,
 
               <div>
                 <button
-                disabled={status}
+                disabled={isGenerating}
                   onClick={() => {
                     const numberedCode = code
                       .split("\n")
@@ -240,9 +246,12 @@ ${code}`,
                       .join("\n");
                     generateExplaination(numberedCode);
                   }}
-                  className="px-2 md:px-4 py-2 cursor-pointer rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 shadow-md hover:from-indigo-600 hover:to-purple-600 hover:shadow-lg transition-all duration-200 active:scale-95"
+                  className={`px-2 md:px-4 py-2 cursor-pointer rounded-lg text-sm font-semibold text-white transition-all duration-200 
+                    ${isGenerating 
+                      ? 'bg-gray-600 cursor-not-allowed opacity-50' 
+                      : 'bg-gradient-to-r from-indigo-500 to-purple-500 shadow-md hover:from-indigo-600 hover:to-purple-600 hover:shadow-lg active:scale-95'}`}
                 >
-                  Generate Explanation
+                  {isGenerating ? "Generating..." : "Generate Explanation"}
                 </button>
               </div>
             </div>
