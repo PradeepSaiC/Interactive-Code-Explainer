@@ -3,13 +3,42 @@ import { Editor } from "@monaco-editor/react";
 import { GoogleGenAI } from "@google/genai";
 const Playground = () => {
   const editorRef = useRef(null);
-  const [language, setLanguage] = useState("javascript");
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const initialLanguage = searchParams.get("language") || "javascript";
+  const initialCode = searchParams.get("code") ? decodeURIComponent(searchParams.get("code")) : "";
+  const [language, setLanguage] = useState(initialLanguage);
   const [explaination, setExplaination] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode);
   const [list, setList] = useState([]);
   const [output, setOutput] = useState("");
     const [idx, setIdx] = useState(0);
     const decorationRef = useRef([]);
+
+  useEffect(() => {
+    const fetchProblem = async () => {
+      const problemId = searchParams.get("problemId");
+      if (problemId) {
+        try {
+          const res = await fetch(`http://localhost:3000/api/problems/${problemId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const lang = searchParams.get("language") || "javascript";
+            // Map common language names to key names in solutions
+            const langKey = lang.toLowerCase() === 'c++' ? 'cpp' : lang.toLowerCase();
+            const solutionCode = data.solutions[langKey] || data.solutions[lang] || "";
+            
+            if (solutionCode) {
+              setCode(solutionCode);
+              setLanguage(lang);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch problem from backend", err);
+        }
+      }
+    };
+    fetchProblem();
+  }, []);
 
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = { editor, monaco };
@@ -145,6 +174,7 @@ ${code}`,
             <span className=" text-xs text-gray-400 font-medium cursor-pointer">
               <select
                 className="border-2 bg-[#2d2d2d] p-1"
+                value={language}
                 onChange={(e) => {
                   setLanguage(e.target.value);
                 }}
@@ -163,7 +193,7 @@ ${code}`,
               onMount={handleEditorDidMount}
               height="100%"
               theme="vs-dark"
-              defaultValue=""
+              value={code}
               language={language}
             ></Editor>
           </div>
