@@ -1,4 +1,4 @@
-# Interactive Code Explainer
+# Interactive Code Explainer - [Live Link](https://interactive-code-explainer.vercel.app/)
 
 Interactive Code Explainer is a React-based web app that helps users understand code by breaking it into meaningful blocks and generating beginner-friendly explanations with AI. It combines a code editor, language selection, explanation panels, and highlighted code regions to make learning and debugging easier.
 
