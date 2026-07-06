@@ -81,65 +81,78 @@ const Playground = () => {
           const ai = new GoogleGenAI({ apiKey: randomKey });
        const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Act as a senior software engineer and an expert code teacher.
+        contents: `Act as a senior software engineer and code reviewer.
 
-Your task is to help me understand the given code by breaking it into meaningful logical blocks and explaining each part clearly in a beginner-friendly way.
+Your task is to analyze the given code and explain it by following the program's actual execution flow.
 
-STRICT INSTRUCTIONS:
+RULES
 
-1. EXECUTION FLOW FIRST:
-   - Always follow the actual execution flow of the program.
-   - Start from the entry point (like main function or global execution).
-   - Then move step-by-step as the program runs.
+1. Follow execution order only.
+   - Start from the entry point.
+   - Explain the code exactly in the order it executes.
+   - Do not explain unused code.
 
-2. DEPENDENCY HANDLING:
-   - If something is required to understand the flow (like structures, classes, helper functions, imports, constants, etc.), explain them BEFORE they are used.
-   - Do NOT randomly explain everything at the top — only explain when needed for understanding.
+2. Explain dependencies only when required.
+   - If a variable, class, struct, constant, import, or helper function is needed to understand the current execution, explain it immediately before it is used.
+   - Do not dump all declarations at the beginning.
 
-3. COMPLETE COVERAGE:
-   - Do NOT skip any part of the code.
-   - Every line must belong to some block.
-   - Include function definitions, variable declarations, loops, conditions, etc.
+3. Cover the entire code.
+   - Every line must belong to exactly one block.
+   - Do not skip any line.
 
-4. MEANINGFUL GROUPING:
-   - Group lines into logical blocks (not too small, not too large).
-   - Each block should represent a meaningful step in execution.
+4. Create meaningful blocks.
+   - Each block should represent one logical step.
+   - Do not make blocks that are too small or too large.
 
-5. BEGINNER-FRIENDLY EXPLANATION:
-   - Use very simple language.
-   - Avoid jargon or explain it if used.
-   - Explain what, why, and how in each block.
+5. Keep explanations concise and technical.
+   - Explain only:
+     - What this block does.
+     - Why it exists.
+     - How it affects execution.
+   - Do NOT give examples.
+   - Do NOT use analogies.
+   - Do NOT use phrases like "Suppose...", "Imagine...", "For example...", "Let's say...", or similar.
+   - Do NOT repeat obvious information.
+   - Be direct and precise.
 
-6. FUNCTION HANDLING:
-   - Do NOT explain functions before they are encountered in execution.
-   - When a function is called, then explain:
-     - What it does
-     - Its parameters
-     - Its return value
-     - Internal working (if needed)
-     strict note : dont leave any fuction without explaining explain it only when called.
+6. Functions
+   - Do not explain a function when it is defined.
+   - Explain it only when execution reaches its first call.
+   - Include:
+     - Purpose
+     - Parameters
+     - Return value
+     - Internal execution
+   - Explain every function exactly once, at its first execution.
 
-7. OUTPUT:
-   - At the end, provide the exact output of the code.
-   - If input is required, assume reasonable sample input and use it.
+7. Loops and conditions
+   - Explain the purpose of the loop or condition.
+   - Explain how execution flows through it.
+   - Do not simulate every iteration unless necessary.
 
-8. RESPONSE FORMAT (STRICT JSON ONLY):
-   Return ONLY a valid JSON object. No extra text.
+8. Output
+   - If the program requires input, choose realistic sample input.
+   - Return the exact output produced.
 
-FORMAT:
+9. Response format
+   Return ONLY valid JSON.
+   Do not include markdown.
+   Do not include code fences.
+   Do not include any text outside the JSON.
+
+Required JSON format:
+
 {
   "blocks": [
     {
-      "explanation": "Clear beginner-friendly explanation of what this block does and why",
-      "lines": [start_line, end_line]
-    },    {
-      "explanation": "Clear beginner-friendly explanation of what this block does and why",
-      "lines": [start_line, end_line]
-    },.....  ],
-  "codeOutput": "Exact output of the code if input is needed you only choose some inputs and give output"
+      "lines": [startLine, endLine],
+      "explanation": "Concise explanation of this execution step."
+    }
+  ],
+  "codeOutput": "Exact program output."
 }
-Note: Dont take silly examples be exactly to the point
-Now analyze and explain the following code:
+
+Analyze the following code:
 
 ${code}`,
       });
