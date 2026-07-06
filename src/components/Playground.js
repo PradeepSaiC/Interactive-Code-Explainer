@@ -138,7 +138,7 @@ FORMAT:
     },.....  ],
   "codeOutput": "Exact output of the code if input is needed you only choose some inputs and give output"
 }
-
+Note: Dont take silly examples be exactly to the point
 Now analyze and explain the following code:
 
 ${code}`,
